@@ -19,7 +19,7 @@
 
 ### Windows 安装包
 
-从 [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) 下载最新的 Windows x64 安装包，并双击运行。安装完成页勾选「打开派板」，以后也可以从 Windows 开始菜单打开。安装包包含运行组件，日常使用无需运行命令。
+从 [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) 下载最新的 Windows x64 安装包，并双击运行。安装完成页勾选「打开派板」。以后在 Windows 开始菜单搜索「派板」，点击应用图标即可打开，也可以右键将它固定到开始菜单。安装包包含运行组件，日常使用无需运行命令。
 
 首次打开时，点击「开始设置」连接已登录的 Codex 桌面应用。使用聊天链接或 ID 完成连接。需要在 Codex 聊天中使用白板时，从开始菜单选择「接入 Codex 白板」，并按提示重新打开 Codex。私有仓库仅在需要跨电脑同步时配置。
 

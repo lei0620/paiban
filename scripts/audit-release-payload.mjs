@@ -30,7 +30,8 @@ export function releaseCandidateFiles(root){
     return path.join('public',entry.name);
   });
   const runtime=runtimeSources(root,{entries:['server.mjs','panel-runner.mjs','installed-migration.mjs','scripts/migrate-installed-data.mjs','scripts/initialize-installed-data.mjs','scripts/configure-installed-backup.mjs','scripts/backup-installed-data.mjs','release-prepare.mjs','release-journal.mjs','release-slot.mjs','release-activation.mjs','update-startup.mjs','update-coordinator.mjs','scripts/resolve-installed-version.mjs','scripts/recover-installed-update.mjs','scripts/check-installed.mjs','scripts/installed-plugin.mjs']}).files;
-  return [...new Set([...runtime,...publicFiles,...plugin,'LICENSE.md','scripts/expand-release.ps1','scripts/installed-launch.ps1','scripts/installed-recover.ps1','scripts/check-codex-desktop.ps1',path.join('.agents','plugins','marketplace.json')].map(file=>path.normalize(file)))].sort();
+  const installerFiles=['assets/paiban.ico','scripts/expand-release.ps1','scripts/installed-launch.ps1','scripts/installed-recover.ps1','scripts/check-codex-desktop.ps1'];
+  return [...new Set([...runtime,...publicFiles,...plugin,...installerFiles,'LICENSE.md',path.join('.agents','plugins','marketplace.json')].map(file=>path.normalize(file)))].sort();
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

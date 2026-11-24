@@ -19,7 +19,7 @@ A local task board for Codex on Windows. Assign tasks to the appropriate Codex c
 
 ### Windows installer
 
-Download the Windows x64 installer from [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) and double-click it. Select Open Paiban on the final setup screen, or open Paiban from the Windows Start menu later. The installer includes the required runtimes. Everyday use requires no terminal commands.
+Download the Windows x64 installer from [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) and double-click it. Select Open Paiban on the final setup screen. To open it later, search for 派板 in the Windows Start menu and click the app icon. You can also right-click it to pin it to Start. The installer includes the required runtimes. Everyday use requires no terminal commands.
 
 On first launch, select Start setup and connect to the signed-in Codex desktop app using a chat link or ID. To open a board inside a Codex chat, select 接入 Codex 白板 (Connect Codex board) from the Windows Start menu and reopen Codex when prompted. Set up a private repository only if you need cross-device sync.
 

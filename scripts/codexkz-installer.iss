@@ -38,6 +38,8 @@ Compression=lzma2
 SolidCompression=yes
 #endif
 WizardStyle=modern
+SetupIconFile={#PayloadDir}\program\assets\paiban.ico
+UninstallDisplayIcon={app}\program\assets\paiban.ico
 
 [Files]
 Source: "{#PayloadDir}\program\*"; DestDir: "{app}\program"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs
@@ -47,10 +49,10 @@ Source: "{#PayloadDir}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversio
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Icons]
-Name: "{app}\启动本机面板"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:LauncherArguments}"; WorkingDir: "{app}\program"
+Name: "{app}\启动本机面板"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:LauncherArguments}"; WorkingDir: "{app}\program"; IconFilename: "{app}\program\assets\paiban.ico"
 Name: "{app}\恢复未完成升级"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:RecoveryArguments}"; WorkingDir: "{app}\program"
 #ifndef IsolatedTest
-Name: "{group}\派板"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:LauncherArguments}"; WorkingDir: "{app}\program"
+Name: "{group}\派板"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:LauncherArguments}"; WorkingDir: "{app}\program"; IconFilename: "{app}\program\assets\paiban.ico"
 Name: "{group}\接入 Codex 白板"; Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:ConnectArguments}"; WorkingDir: "{app}\program"
 
 [Run]
