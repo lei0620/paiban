@@ -2,7 +2,7 @@ import {panelLocation} from './read-client.js';
 
 const $=id=>document.getElementById(id),esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let api,current,report,busy=false,version=0,currentKey='';
-let desktopReport,renderedDesktopReport,desktopFlight,desktopVersion='',desktopPage='',unconfirmedAt=0,followWarning=false,automaticKey='',retryAt=0;
+let desktopReport,renderedDesktopReport,desktopFlight,desktopVersion='',desktopPage='',unconfirmedAt=0,followWarning=false;
 const reference=row=>[['任务',row.taskId],['执行',row.jobId],['安排',row.planId],['对话',row.threadId]].filter(([,value])=>value).map(([label,value])=>`${label} ${value}`).join(' · ');
 const desktopStates={pass:'通过',fail:'异常',pending:'待实测'};
 const desktopEnabled=()=>current?.state.service?.desktopCheckSupported===true&&!current.state.service.nativeMode&&!!new URL(panelLocation.href).searchParams.get('panelSession')&&!['control','versions'].includes(new URL(panelLocation.href).searchParams.get('view'));
@@ -15,9 +15,15 @@ function updateDesktopPage(){
 }
 function renderDesktopCheck(){
   const rows=desktopReport?.rows??[];
-  const alert=followWarning?'当前项目未确认，可能正在显示上次的白板。':rows.some(row=>row.status==='fail')?'Codex 兼容性自检发现异常。':'';
+  const alert=followWarning?'当前聊天待确认，可打开独立看板记任务。':'';
   $('desktopCheckNotice').hidden=!desktopEnabled()||!alert;
   if($('desktopCheckMessage').textContent!==alert)$('desktopCheckMessage').textContent=alert;
+  if(alert&&current.projectId){
+    const url=new URL('/',panelLocation.href);
+    url.searchParams.set('projectId',current.projectId);
+    url.searchParams.set('standalone','1');
+    $('standaloneBoard').href=url.href;
+  }
   $('desktopCheckRun').disabled=!!desktopFlight;
   if(renderedDesktopReport!==desktopReport){
     renderedDesktopReport=desktopReport;
@@ -32,31 +38,27 @@ async function loadDesktopCheck(){
   $('desktopCheckStatus').textContent='正在检查当前 Codex 窗口…';renderDesktopCheck();
   try{
     const value=await flight;
-    if(panelLocation.href!==pageUrl||observedVersion!==desktopVersion){automaticKey='';return;}
+    if(panelLocation.href!==pageUrl||observedVersion!==desktopVersion)return;
     desktopReport=value;
     $('desktopCheckStatus').textContent=(value.hostVersion?'Codex '+value.hostVersion+' · ':'')+new Date(value.checkedAt).toLocaleString('zh-CN');
   }catch(error){
     if(panelLocation.href===pageUrl&&observedVersion===desktopVersion)$('desktopCheckStatus').textContent=error.message;
-    if(error.status===409){automaticKey='';retryAt=Date.now()+12000;}
   }finally{desktopFlight=null;renderDesktopCheck();}
 }
 export function observeDesktopContext(context){
   if(!desktopEnabled()||document.hidden||context.pageUrl!==panelLocation.href)return;
   updateDesktopPage();
   if(context.hostVersion&&context.hostVersion!==desktopVersion){
-    desktopVersion=context.hostVersion;desktopReport=null;automaticKey='';retryAt=0;unconfirmedAt=0;
+    desktopVersion=context.hostVersion;desktopReport=null;unconfirmedAt=0;
     $('desktopCheckStatus').textContent='等待核对当前项目对话。';
   }
   const page=new URL(context.pageUrl);
   const confirmed=context.status==='confirmed'&&context.projectId===page.searchParams.get('projectId')&&context.threadId===(page.searchParams.get('threadId')??'');
   const now=Date.now();
-  if(confirmed){unconfirmedAt=0;followWarning=false;if(automaticKey.endsWith(':unresolved')){automaticKey='';desktopReport=null;$('desktopCheckStatus').textContent='项目归属已恢复，等待自检。';}}
+  if(confirmed){unconfirmedAt=0;followWarning=false;}
   else if(context.status==='unresolved'&&context.matched===true){unconfirmedAt||=now;followWarning=now-unconfirmedAt>=5000;}
   else{unconfirmedAt=0;followWarning=false;}
-  const key=(desktopVersion||'unknown')+(followWarning?':unresolved':':thread');
-  if((followWarning||confirmed&&context.kind==='thread')&&!desktopFlight&&automaticKey!==key&&now>=retryAt){
-    automaticKey=key;void loadDesktopCheck();
-  }else renderDesktopCheck();
+  renderDesktopCheck();
 }
 function scope(){return currentKey;}
 function render(){
@@ -81,12 +83,12 @@ export function initDiagnostics(context){
   $('diagnosticOpen').onclick=()=>{dialog.showModal();void load();};$('diagnosticClose').onclick=()=>dialog.close();$('diagnosticRefresh').onclick=()=>void load();
   $('diagnosticExport').onclick=()=>{if(!report)return;const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='leix-diagnostics-'+new Date().toISOString().replaceAll(':','-')+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   const openCheck=document.createElement('button');openCheck.id='desktopCheckOpen';openCheck.type='button';openCheck.textContent='Codex 兼容性自检';openCheck.hidden=true;section.append(openCheck);
-  const banner=document.createElement('div');banner.id='desktopCheckNotice';banner.className='desktop-check-notice';banner.hidden=true;banner.innerHTML='<span id="desktopCheckMessage" role="status"></span><button id="desktopCheckDetails" type="button">查看自检</button>';
+  const banner=document.createElement('div');banner.id='desktopCheckNotice';banner.className='desktop-check-notice';banner.hidden=true;banner.innerHTML='<span id="desktopCheckMessage" role="status"></span><a id="standaloneBoard" target="_blank" rel="noopener">打开独立看板</a>';
   $('projectTitle').closest('.project-heading').after(banner);
   const check=document.createElement('dialog');check.id='desktopCheckDialog';check.setAttribute('aria-labelledby','desktopCheckTitle');
   check.innerHTML='<div class="dialog-heading"><h2 id="desktopCheckTitle">Codex 兼容性自检</h2><button id="desktopCheckClose" type="button" aria-label="关闭自检">×</button></div><p id="desktopCheckStatus" class="hint" role="status">等待检查当前项目对话。</p><ul id="desktopCheckRows" class="desktop-check-rows"></ul><div class="dialog-actions"><button id="desktopCheckRun" type="button">重新检查</button></div>';
   document.body.append(check);
-  openCheck.onclick=$('desktopCheckDetails').onclick=()=>{check.showModal();if(!desktopReport)void loadDesktopCheck();};
+  openCheck.onclick=()=>{check.showModal();if(!desktopReport)void loadDesktopCheck();};
   $('desktopCheckClose').onclick=()=>check.close();
   $('desktopCheckRun').onclick=()=>void loadDesktopCheck();
 }

@@ -16,9 +16,10 @@ export function codexCommand(){
 
 // The local app-server reads its state DB without repairing rollouts. This is
 // only used when the desktop sidebar listing itself times out.
-export function listLocalIndexThreads(paths,{command=codexCommand(),args=['app-server','--stdio'],timeoutMs=20000}={}){
-  const allowed=new Set(paths.map(normalize));
-  if(!allowed.size)return Promise.resolve([]);
+export function listLocalIndexThreads(paths,{command=codexCommand(),args=['app-server','--stdio'],timeoutMs=20000,allowMultiple=false}={}){
+  const discovering=paths===null;
+  const allowed=discovering?null:new Set(paths.map(normalize));
+  if(allowed?.size===0)return Promise.resolve([]);
   return new Promise((resolve,reject)=>{
     let child,done=false,buffer='',pages=0;const rows=new Map(),cursors=new Set();
     const finish=(error,value)=>{
@@ -29,7 +30,7 @@ export function listLocalIndexThreads(paths,{command=codexCommand(),args=['app-s
     };
     const timer=setTimeout(()=>finish(Error('本机对话索引读取超时')),timeoutMs);
     const send=(id,method,params)=>child.stdin.write(JSON.stringify({id,method,params})+'\n');
-    const page=cursor=>send(2,'thread/list',{archived:false,cwd:paths,cursor,limit:100,sortKey:'recency_at',sortDirection:'desc',useStateDbOnly:true});
+    const page=cursor=>send(2,'thread/list',{archived:false,...(discovering?{limit:allowMultiple?20:2}:{cwd:paths,limit:100}),cursor,sortKey:'recency_at',sortDirection:'desc',useStateDbOnly:true});
     try{child=spawn(command,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});}
     catch(error){finish(error);return;}
     child.stdin.on('error',()=>{});
@@ -47,12 +48,16 @@ export function listLocalIndexThreads(paths,{command=codexCommand(),args=['app-s
         }else if(response.id===2){
           if(response.error||!Array.isArray(response.result?.data)){finish(Error('本机对话目录读取失败'));return;}
           for(const row of response.result.data){
-            if(!threadId.test(row.id??'')||!allowed.has(normalize(row.cwd))){finish(Error('本机对话目录归属无效'));return;}
+            if(!threadId.test(row.id??'')||typeof row.cwd!=='string'||!(discovering?path.isAbsolute(row.cwd):allowed.has(normalize(row.cwd)))){finish(Error('本机对话目录归属无效'));return;}
             if(rows.has(row.id)&&normalize(rows.get(row.id).cwd)!==normalize(row.cwd)){finish(Error('本机对话目录归属冲突'));return;}
             rows.set(row.id,{id:row.id,cwd:row.cwd,title:row.name?.trim()||row.id});
           }
           if(rows.size>1000||++pages>20){finish(Error('本机对话目录超过安全上限'));return;}
           const cursor=response.result.nextCursor;
+          if(discovering){
+            // A partial list cannot prove that a candidate is unique.
+            finish(null,allowMultiple?[...rows.values()].slice(0,20):cursor==null&&rows.size===1?[...rows.values()]:[]);return;
+          }
           if(cursor==null){finish(null,[...rows.values()]);return;}
           if(typeof cursor!=='string'||cursors.has(cursor)){finish(Error('本机对话目录游标无效'));return;}
           cursors.add(cursor);page(cursor);
@@ -72,6 +77,6 @@ export async function localCatalogFallback({projects,state,previousThreads=[]},o
   const threads=rows.map(row=>({...row,kind:'codex',hostId:'local',status:'active',activityUnknown:true}));
   const threadErrors=Object.fromEntries(rows.map(row=>[row.id,'本机对话状态未确认，所属项目暂停派发']));
   const visible=new Set(rows.slice(0,50).map(row=>row.id));
-  for(const id of [...(state.imported??[]),...Object.values(state.bindings??{}),...previousThreads.map(row=>row.id)])visible.add(id);
+  for(const id of [state.caller,...(state.imported??[]),...Object.values(state.bindings??{}),...previousThreads.map(row=>row.id)])visible.add(id);
   return {threads:threads.filter(row=>visible.has(row.id)),activityThreads:threads,threadErrors};
 }

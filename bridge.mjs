@@ -27,7 +27,7 @@ export async function discoverInstances(options={}) {
   const pending=[...candidates.values()];
   for(let i=0;i<pending.length;i+=8){
     const batch=await Promise.all(pending.slice(i,i+8).map(async candidate=>{
-      try{const result=await probe(candidate.pipe);if(['list_projects','list_threads','read_thread','open_in_codex'].every(name=>result.tools?.some(t=>t.name===name||t.name.endsWith('__'+name))))return candidate;}catch{}
+      try{const result=await probe(candidate.pipe);if(['list_projects','list_threads','read_thread'].every(name=>result.tools?.some(t=>t.name===name||t.name.endsWith('__'+name))))return candidate;}catch{}
       return null;
     }));found.push(...batch.filter(Boolean));
   }

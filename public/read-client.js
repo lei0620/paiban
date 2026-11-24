@@ -93,9 +93,10 @@ export class PanelReader{
 }
 export function catalogConnectionView(value){
   const health=value.service?.catalogHealthSupported&&value.service.catalogHealth;
+  if(!value.caller&&value.workspace?.defaultProjectId)return {connected:false,checking:false,text:'本地模式',reason:'',diagnosticReason:value.connectionError||''};
   if(!health){const connected=!value.connectionError&&!!value.lastSync;return {connected,text:connected?(value.catalogSource==='local-app-server'?'只读目录':'已连接'):'连接异常',reason:value.connectionError??'',checking:false};}
   const connected=health.transport==='connected',checking=health.activities==='checking';
-  if(value.activityScope==='panel')return {connected,checking:false,recovering:!connected,text:connected?'已连接':health.transport==='connecting'?'连接中':'自动恢复中',reason:!connected&&health.transport!=='connecting'?'正在连接本机 Codex，任务和草稿已保留。':'',diagnosticReason:health.reason||value.connectionError||''};
+  if(value.activityScope==='panel')return {connected,checking:false,recovering:!connected,text:connected?'已连接':health.transport==='connecting'?'连接中':'本地模式',reason:'',diagnosticReason:health.reason||value.connectionError||''};
   if(value.service.catalogRecoverySupported){
     const recovering=health.recovering||health.activities==='blocked'||!connected;
     const delayed=connected&&recovering&&!!health.reason;

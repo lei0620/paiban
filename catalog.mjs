@@ -17,7 +17,8 @@ export async function collectCatalog(bridge,state,options={}){
   try{
     if(options.metadataOnly){
       p=await bridge.call('list_projects');
-      fallback=await (options.localCatalogFallback??localCatalogFallback)({bridge,projects:p.projects,state,previousThreads:options.previousThreads});
+      try{fallback=await (options.localCatalogFallback??localCatalogFallback)({bridge,projects:p.projects,state,previousThreads:options.previousThreads});}
+      catch(error){fallback={threads:[],activityThreads:[],threadErrors:{}};verificationFailure={reason:error.message,code:'CATALOG_UNVERIFIED'};}
       t={threads:fallback.threads,pinnedThreads:[]};
     }else{
       [p,t]=await Promise.all([bridge.call('list_projects'),bridge.call('list_threads',{limit:50},options.listOptions??{})]);

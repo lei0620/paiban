@@ -6,6 +6,10 @@ import fs from 'node:fs/promises';
 import {normalize,sourcePathOf} from './core.mjs';
 
 const exec=promisify(execFile),cache=new Map();
+function gitCommands(){
+  const roots=[process.env.ProgramW6432,process.env.ProgramFiles,process.env.LOCALAPPDATA&&path.join(process.env.LOCALAPPDATA,'Programs')];
+  return process.platform==='win32'?['git',...new Set(roots.filter(Boolean).map(root=>path.join(root,'Git','cmd','git.exe')))]:['git'];
+}
 export function githubRepository(remote){
   if(typeof remote!=='string'||remote.length>2048)return null;
   const value=remote.trim();let host,pathname;
@@ -28,15 +32,34 @@ export async function inspectRepository(project,{fresh=false}={}){
   if(project.hostId!=='local'||!directory||!path.isAbsolute(directory)||/^(?:[e-z]:|\\\\)/i.test(directory))return {repository:null,repositoryStatus:'unavailable',repositoryReason:'此目录尚不能自动识别源码仓库'};
   const key=normalize(project.path)+'\0'+normalize(directory),previous=cache.get(key);
   if(!fresh&&previous&&Date.now()-previous.at<60000)return previous.value;
-  const git=async args=>(await exec('git',['--no-optional-locks','-c','core.fsmonitor=false',...args],{cwd:directory,windowsHide:true,timeout:5000,maxBuffer:32768,env:{...process.env,GIT_TERMINAL_PROMPT:'0',GIT_OPTIONAL_LOCKS:'0'}})).stdout.trim();
+  let command;
+  async function git(args){
+    for(const candidate of command?[command]:gitCommands()){
+      try{
+        const result=await exec(candidate,['--no-optional-locks','-c','core.fsmonitor=false',...args],{cwd:directory,windowsHide:true,timeout:5000,maxBuffer:32768,env:{...process.env,GIT_TERMINAL_PROMPT:'0',GIT_OPTIONAL_LOCKS:'0'}});
+        command=candidate;
+        return result.stdout.trim();
+      }catch(error){if(error.code!=='ENOENT')throw error;}
+    }
+    throw Object.assign(Error('未找到 Git'),{code:'ENOENT'});
+  }
   let value;
   try{
     const real=await fs.realpath(directory);if(normalize(real)!==normalize(directory)||normalize(await fs.realpath(project.path))!==normalize(project.path))throw Error('linked directory');
     if(project.sourcePath)await assertSourceGitDirectory(directory);
     const root=await git(['rev-parse','--show-toplevel']);
     if(normalize(root)!==normalize(directory))value={repository:null,repositoryReason:'源码目录不是仓库根目录，请手动确认逻辑项目'};
-    else{const remotes=await git(['remote']);if(!remotes.trim())value={repository:null,repositoryStatus:'local',gitAvailable:true,repositoryReason:''};else{const repository=githubRepository(await git(['config','--get','remote.origin.url']));value={repository,repositoryStatus:repository?'github':'external',gitAvailable:true,repositoryReason:repository?'':'已有非 GitHub 远程仓库，请核对，不能直接覆盖'};}}
-  }catch(error){value=error.code===128&&/not a git repository/i.test(error.stderr??'')?{repository:null,repositoryStatus:'local',gitAvailable:false,repositoryReason:''}:{repository:null,repositoryStatus:'unavailable',repositoryReason:'源码仓库暂不可读取，请核对本机目录与远程配置'};}
+    else{
+      const remotes=(await git(['remote'])).split(/\r?\n/).filter(Boolean);
+      const remote=remotes.includes('origin')?'origin':remotes.length===1?remotes[0]:'';
+      if(!remotes.length)value={repository:null,repositoryStatus:'local',gitAvailable:true,repositoryReason:''};
+      else if(!remote)value={repository:null,repositoryStatus:'ambiguous',gitAvailable:true,repositoryReason:'有多个 Git 远程，请在项目设置中选择要用于同步的仓库'};
+      else{
+        const repository=githubRepository(await git(['config','--get','remote.'+remote+'.url']));
+        value={repository,repositoryStatus:repository?'github':'external',gitAvailable:true,repositoryReason:repository?'':'当前 Git 远程未识别为 GitHub 仓库'};
+      }
+    }
+  }catch(error){value=error.code===128&&/not a git repository/i.test(error.stderr??'')?{repository:null,repositoryStatus:'local',gitAvailable:true,repositoryReason:''}:{repository:null,repositoryStatus:'unavailable',repositoryReason:error.code==='ENOENT'?'本机未找到 Git，可在安装 Git 后同步仓库':'源码仓库暂不可读取，将在后台重试'};}
   cache.set(key,{at:Date.now(),value});return value;
 }
 export function validateProjectIdentities(values=[]){
@@ -64,15 +87,16 @@ export function reconcileRepositories(state,projects,remoteIdentities=[],remoteR
   for(const p of projects){
     // Explicit source aliases retain their original shared task identity.
     if(mappings[p.projectId]?.sourcePath)continue;
-    if(p.repositoryStatus==='local'&&p.hostId==='local'&&p.path&&!p.repository&&!p.repositoryReason){
-      if(!mappings[p.projectId]&&!Object.values(mappings).some(m=>normalize(m.path)===normalize(p.path)))mappings[p.projectId]={logicalId:'local-'+createHash('sha256').update((state.workspace.deviceId??'')+'\0'+normalize(p.path)).digest('hex').slice(0,24),logicalName:(p.label||'本地项目').slice(0,80),path:p.path,tags:[],automatic:true,localOnly:true};
+    if(p.offlineOnly)continue;
+    if(!p.repository||p.repositoryReason&&!mappings[p.projectId]){
+      if(p.hostId==='local'&&p.path&&!mappings[p.projectId]&&!Object.values(mappings).some(m=>normalize(m.path)===normalize(p.path)))mappings[p.projectId]={logicalId:'local-'+createHash('sha256').update((state.workspace.deviceId??'')+'\0'+normalize(p.path)).digest('hex').slice(0,24),logicalName:(p.label||'本地项目').slice(0,80),path:p.path,tags:[],automatic:true,localOnly:true};
       continue;
     }
-    if(!p.repository)continue;
     let m=mappings[p.projectId];
     if(m&&(normalize(m.path)!==normalize(p.path)||(m.repository&&m.repository!==p.repository)))continue;
     if(p.repositoryReason&&(!m||m.automatic))continue;
     let shared=identities.get(p.repository);
+    if(m?.automatic&&m.localOnly&&!state.tasks.some(t=>t.projectId===p.projectId&&t.syncId))m={...m,logicalId:shared?.logicalId??repositoryLogicalId(p.repository),logicalName:shared?.projectName??m.logicalName};
     if(m&&shared&&m.logicalId!==shared.logicalId){
       const used=state.sync?.base?.some(r=>r.logicalId===m.logicalId)||state.tasks.some(t=>t.projectId===p.projectId&&t.syncId);
       // A new computer may have published only an empty generated identity.

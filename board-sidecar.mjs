@@ -39,7 +39,7 @@ export function retrySidecars(state,input,catalog){
 export function sidecarCandidates(state,catalog,origin){
   const candidates=[];
   for(const project of catalog.projects){
-    if(!project.path||!enabled(state.boards,project.projectId))continue;
+    if(!project.path||project.offlineOnly||!enabled(state.boards,project.projectId))continue;
     for(const thread of catalog.threads){
       if(thread.kind!=='codex'||thread.hostId!=='local'||normalize(thread.cwd)!==normalize(project.path))continue;
       const key=JSON.stringify([project.projectId,thread.id]);

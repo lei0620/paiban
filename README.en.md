@@ -21,23 +21,23 @@ A local task board for Codex on Windows. Assign tasks to the appropriate Codex c
 
 Download the Windows x64 installer from [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) and double-click it. Select Open Paiban on the final setup screen. To open it later, search for 派板 in the Windows Start menu and click the app icon. You can also right-click it to pin it to Start. The installer includes the required runtimes. Everyday use requires no terminal commands.
 
-On first launch, select Start setup and connect to the signed-in Codex desktop app using a chat link or ID. To open a board inside a Codex chat, select 接入 Codex 白板 (Connect Codex board) from the Windows Start menu and reopen Codex when prompted. Set up a private repository only if you need cross-device sync.
+Use the local board on first launch to record tasks with or without Git and Codex. To run a task, open the signed-in Codex desktop app. Paiban connects automatically when it can verify a single local instance and chat. For other cases, use the connection settings. Paiban identifies project directories and GitHub repositories in the background. Use the Connect Codex board Start menu entry for the optional in-chat board. Enable private-repository sync in Settings when you need it.
 
 Data and backups are stored in the `userdata` and `backups` subdirectories of the installation folder. Change either location under Settings → Data.
 
 ### Source development
 
-You need Windows, Node.js 22.13 or later, PowerShell 7, and a running Codex desktop app signed in to your account. The source version has no project dependencies to install.
+You need Windows, Node.js 22.13 or later, and PowerShell 7. The source version has no project dependencies to install. Running a task requires a signed-in Codex desktop app.
 
-1. Extract or clone the source locally. Open the directory and a chat in the Codex desktop app.
-2. Start the panel from the source directory in that chat's execution environment. On first launch, the environment needs the actual `CODEX_THREAD_ID` of the current chat.
+1. Extract or clone the source locally.
+2. Start the panel from the source directory. When starting from a Codex chat, Paiban can use that chat's `CODEX_THREAD_ID`.
 
    ```powershell
    $env:PORT = '4319'
    npm.cmd start
    ```
 
-3. Keep the service running and open the [local panel](http://127.0.0.1:4319). Select Start setup. Each step links to the relevant controls and includes a prompt you can paste into Codex for help. Connect Codex and set the device and controller project. Then choose a project and add a task. Set up your own private GitHub repository only if you need cross-device sync.
+3. Keep the service running and open the [local panel](http://127.0.0.1:4319) to record tasks. After connecting Codex, choose from the local projects. Configure a private GitHub repository when you want cross-device sync.
 4. Confirm the target chat when starting a task. When Codex finishes the turn, review the result under In review.
 
 ## Updates

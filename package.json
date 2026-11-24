@@ -9,7 +9,7 @@
     "start": "node panel-runner.mjs",
     "check": "node scripts/check.mjs",
     "package:plugin": "node scripts/package-local-plugin.mjs",
-    "test": "node --test release-manifest.test.mjs release-check.test.mjs release-download.test.mjs release-check-store.test.mjs release-scheduler.test.mjs",
+    "test": "node --test first-use.test.mjs release-manifest.test.mjs release-check.test.mjs release-download.test.mjs release-check-store.test.mjs release-scheduler.test.mjs",
     "verify": "npm run check && npm test"
   }
 }

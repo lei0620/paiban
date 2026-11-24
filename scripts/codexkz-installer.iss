@@ -60,7 +60,7 @@ Filename: "{app}\runtime\powershell\pwsh.exe"; Parameters: "{code:LauncherArgume
 #endif
 
 [Messages]
-WelcomeLabel2=派板需要已安装并运行的 Codex 桌面应用。%n%n请先关闭其他安装程序。现有运行任务不会被强制结束。
+WelcomeLabel2=安装后可以直接使用本地看板。需要执行任务时，再连接已登录的 Codex。%n%n请先关闭其他安装程序。
 
 [Code]
 var
@@ -151,7 +151,7 @@ begin
     '请选择原项目目录', '仅在旧面板停止并且没有未决操作时迁移。', False, '');
   SourcePage.Add('旧源码项目目录：');
   ConnectPage := CreateOutputMsgMemoPage(SourcePage.ID, '打开派板',
-    '安装后可以从开始菜单打开派板', '首次打开时，在网页中按步骤连接 Codex。', '');
+    '安装后可以从开始菜单打开派板', '打开后即可使用本地看板。', '');
   DataOverride := ExpandConstant('{param:DataRoot|}');
   BackupOverride := ExpandConstant('{param:BackupRoot|}');
   SourcePage.Values[0] := SourceArg;
@@ -162,7 +162,7 @@ begin
   if CurPageID = ConnectPage.ID then
     ConnectPage.RichEditViewer.Lines.Text :=
       '点击安装完成页的“打开派板”，面板会在浏览器中打开。以后可以从开始菜单再次打开。' + #13#10 + #13#10 +
-      '第一次使用时，打开 Codex 桌面中的一个聊天，在派板网页点击“开始设置”。使用聊天链接或 ID 完成连接。' + #13#10 + #13#10 +
+      '需要把任务交给 Codex 时，请打开已登录的 Codex。能唯一核对的连接会自动建立，其他情况可在派板设置中选择。' + #13#10 + #13#10 +
       '如果想在 Codex 聊天里打开白板，从开始菜单选择“接入 Codex 白板”。接入提示出现后，完成手头的工作并重新打开 Codex。';
 end;
 
@@ -226,7 +226,7 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var ExitCode: Integer; Arguments, BackupTarget: String; Detected: Boolean;
+var ExitCode: Integer; Arguments, BackupTarget: String;
 begin
   if CurStep = ssPostInstall then begin
     Arguments := AddQuotes(ExpandConstant('{app}\program\scripts\check-installed.mjs')) + ' ' + AddQuotes(ExpandConstant('{app}\program'));
@@ -249,9 +249,5 @@ begin
     Arguments := AddQuotes(ExpandConstant('{app}\program\scripts\installed-plugin.mjs')) + ' create';
     if not Exec(ExpandConstant('{app}\runtime\node\node.exe'), Arguments, ExpandConstant('{app}\program'), SW_HIDE, ewWaitUntilTerminated, ExitCode) or (ExitCode <> 0) then
       RaiseException('创建 Codex 插件接入文件失败。请保留已初始化的数据目录。');
-    Arguments := '-NoProfile -NonInteractive -File ' + AddQuotes(ExpandConstant('{app}\program\scripts\check-codex-desktop.ps1'));
-    Detected := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Arguments, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
-    if not Detected or (ExitCode <> 0) then
-      MsgBox('未能确认已安装 Codex 桌面应用。请自行安装并运行 Codex 后，再接入本聊天白板。', mbInformation, MB_OK);
   end;
 end;

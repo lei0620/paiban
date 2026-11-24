@@ -9,12 +9,6 @@ const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let api,current={},restartPending=false,restartInstance=null,observedInstance=null,sourceProof=null,sourceProjectId=null,updateBusy=false,updateMessage='',reconnectDataLocation;
 let projectBoardUI,projectBoardModule;
-const dismissedSourceReminders=new Set();
-const sourceReminderKey=projectId=>'leix:source-reminder-dismissed:'+projectId;
-function sourceReminderDismissed(projectId){
-  if(dismissedSourceReminders.has(projectId))return true;
-  try{return localStorage.getItem(sourceReminderKey(projectId))==='1';}catch{return false;}
-}
 const values=form=>Object.fromEntries(new FormData(form));
 const input=(id,label,name,type='text')=>`<label for="${id}">${label}</label><input id="${id}" name="${name}" type="${type}" required>`;
 const setupSteps=[
@@ -30,7 +24,11 @@ function setupGuideMarkup(){
 }
 
 function initSetupGuide(openSettings,showSettingsSection){
-  $('setupGuideEntry').onclick=()=>{openSettings(true);showSettingsSection('general');$('setupGuide').open=true;const summary=$('setupGuide').querySelector('summary');summary.focus();};
+  $('setupGuideEntry').onclick=()=>{
+    openSettings(true);showSettingsSection('general');
+    $('workspaceAdvanced').open=true;
+    $('findInstances').focus();$('findInstances').click();
+  };
   $('setupGuide').addEventListener('click',async event=>{
     const jump=event.target.closest('[data-setup-target]');
     if(jump){
@@ -100,14 +98,14 @@ export function initHub(context){
   api=context;initVersions(context);initSidebarOpener(api,()=>current);initWorkflowInitialization(context);
   const host=document.createElement('section');host.id='workspaceHub';
   host.innerHTML=`<nav class="hub-nav" aria-label="工作区导航"><div class="hub-switch"><a id="controlLink">总控</a><a id="ownBoardLink">项目</a><a id="referencesLink">资料</a></div><div class="workspace-tools"><button id="workspaceToggle" class="device-status-button" aria-controls="workspaceConfig" aria-expanded="false" aria-label="工作区设置"><svg class="device-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="device-divider" aria-hidden="true"></span><span id="workspaceLabel">未设置电脑</span><span id="updateAvailable" hidden> · 有更新</span><span class="device-divider" aria-hidden="true"></span></button></div></nav>
-    <button type="button" id="setupGuideEntry" hidden>开始设置</button><p id="identityReminder" class="identity-reminder" role="status"></p>
+    <button type="button" id="setupGuideEntry" hidden>连接 Codex</button>
     <details id="workspaceConfig" class="settings"><summary>工作区设置</summary><div class="workspace-panel-heading"><h1 id="workspaceHeading" tabindex="-1">设置</h1><nav id="workspaceSettingsNav" aria-label="设置分区"><button type="button" data-settings-target="general">常规</button><button type="button" data-settings-target="project">项目</button><button type="button" data-settings-target="sync">同步</button><button type="button" data-settings-target="storage">数据</button><button type="button" data-settings-target="updates">更新</button></nav><button type="button" id="closeWorkspace">返回</button></div><p id="workspaceSettingsNotice" role="status" aria-live="polite" hidden></p><p id="workspaceContext" hidden></p><div class="settings-body hub-settings">
     <form id="deviceForm"><h3>这台电脑</h3><p id="deviceSummary" class="hint"></p><details id="deviceSettings" class="workspace-option"><summary>更改电脑与总控</summary>${input('deviceLabel','电脑名称','deviceLabel')}<label for="controllerProject">总控项目</label><select id="controllerProject" name="controllerProjectId" required></select><button class="primary">保存</button></details></form>
-    <form id="syncForm"><h3>待办同步</h3><p id="syncOverview" class="hint" role="status"></p><div class="workspace-sync-actions"><label class="check"><input id="syncAutoEnabled" name="autoEnabled" type="checkbox" checked>自动同步</label><button type="button" id="syncNow">立即同步</button></div><details id="syncConfigDetails" class="workspace-option"><summary id="syncConfigSummary">同步设置</summary><p id="syncStatus" class="hint" role="status"></p><div id="syncConflicts"></div><p id="syncInbox" class="hint"></p>${input('syncRepo','GitHub 私有仓库','repo')}${input('syncBranch','同步分支','branch')}<label class="check"><input id="syncRichFields" name="includeRichFields" type="checkbox" checked>包含版块、依赖、标签与附件</label><p class="hint">自动同步适用于待办。立即同步还会同步当前项目的看板和资料。</p><label class="check"><input name="confirmed" type="checkbox" required>确认使用此私有仓库保存待办及所选附件</label><button>保存同步设置</button></details></form>
+    <form id="syncForm"><h3>待办同步</h3><p id="syncOverview" class="hint" role="status"></p><div class="workspace-sync-actions"><label class="check"><input id="syncAutoEnabled" name="autoEnabled" type="checkbox">自动同步</label><button type="button" id="syncNow">立即同步</button></div><details id="syncConfigDetails" class="workspace-option"><summary id="syncConfigSummary">同步设置</summary><p id="syncStatus" class="hint" role="status"></p><div id="syncConflicts"></div><p id="syncInbox" class="hint"></p>${input('syncRepo','GitHub 私有仓库','repo')}${input('syncBranch','同步分支','branch')}<label class="check"><input id="syncRichFields" name="includeRichFields" type="checkbox" checked>包含版块、依赖、标签与附件</label><p class="hint">自动同步适用于待办。立即同步还会同步当前项目的看板和资料。</p><label class="check"><input name="confirmed" type="checkbox" required>确认使用此私有仓库保存待办及所选附件</label><button>保存同步设置</button></details></form>
     <details id="workspaceAdvanced" class="workspace-advanced"><summary>高级设置</summary>
     <form id="sourceForm"><h3>已有源码目录</h3><p id="sourceEntry" class="hint"></p><label for="sourcePath">实际源码目录</label><input id="sourcePath" name="sourcePath" required placeholder="选择已有GitHub仓库的本机绝对目录"><p class="hint">会话、任务和原有待办身份保留；只关联已有仓库，不上传或移动文件。同一源码目录会保留执行占用保护。</p><button id="previewSource" type="button">核验源码目录</button><p id="sourceProof" class="hint" role="status"></p><label class="check"><input id="confirmSource" type="checkbox" required>已核对会话入口、源码目录和仓库</label><button id="saveSource" class="primary" disabled>保存源码关联</button></form>
-    <form id="mappingForm"><p id="repositoryIdentity" class="hint" role="status"></p><p id="mappingPath" hidden></p>${input('logicalId','项目标识','logicalId')}${input('logicalName','项目名称','logicalName')}<label for="projectTags">标签</label><input id="projectTags" name="tags" placeholder="逗号分隔"><label class="check"><input name="confirmed" type="checkbox" required>已核对项目与目录</label><button class="primary">保存身份</button><button id="checkWorkflow" type="button">核验规范</button><p id="workflowResult" class="hint" role="status"></p></form>
-    <form id="connectionForm"><h3>桌面连接</h3><p id="connectionRecoveryHint" class="hint"></p><p id="connectionDiagnostic" class="hint" hidden></p><button id="findInstances" type="button">查找实例</button><label for="instanceId">本机实例</label><select id="instanceId" name="instanceId" required></select>${input('connectionCaller','Codex 聊天链接或 ID','caller')}<button>保存连接</button></form>
+    <form id="mappingForm"><p id="repositoryIdentity" class="hint" role="status"></p><p id="mappingPath" hidden></p><button id="selectRepoCopy" hidden type="button">用此副本同步</button>${input('logicalId','项目标识','logicalId')}${input('logicalName','项目名称','logicalName')}<label for="projectTags">标签</label><input id="projectTags" name="tags" placeholder="逗号分隔"><label class="check"><input name="confirmed" type="checkbox" required>已核对项目与目录</label><button class="primary">保存身份</button><button id="checkWorkflow" type="button">核验规范</button><p id="workflowResult" class="hint" role="status"></p></form>
+    <form id="connectionForm"><h3>桌面连接</h3><p id="connectionRecoveryHint" class="hint"></p><p id="connectionDiagnostic" class="hint" hidden></p><button id="findInstances" type="button">查找实例</button><label for="instanceId">本机实例</label><select id="instanceId" name="instanceId" required></select><label for="connectionCaller">Codex 聊天链接或 ID</label><input id="connectionCaller" name="caller" list="connectionChats" required><datalist id="connectionChats"></datalist><button>保存连接</button></form>
     <form id="serviceForm"><h3>服务</h3><button type="button" id="restartPanel">重启面板</button><p id="restartPanelStatus" class="hint" role="status"></p></form></details>
     <section id="storageSettings" aria-labelledby="storageSettingsHeading"><h3 id="storageSettingsHeading">数据与备份</h3><form id="dataLocationForm" hidden><label for="dataLocation">本机数据目录</label><input id="dataLocation" name="dataRoot" required autocomplete="off"><p class="hint">填写尚未创建的新目录。搬迁会先备份并重启，原目录保留。</p><button type="submit">搬迁数据并重启</button><p id="dataLocationStatus" class="hint" role="status" aria-live="polite"></p></form>
     <details id="backupOptions" class="workspace-option" hidden><summary>备份位置</summary><form id="backupConfigForm"><label for="backupRoot">本机备份目录</label><input id="backupRoot" name="backupRoot" required autocomplete="off" placeholder="输入此电脑上的绝对目录"><button type="submit">保存备份位置</button><p id="backupConfigStatus" class="hint" role="status" aria-live="polite"></p></form></details></section>
@@ -157,15 +155,6 @@ export function initHub(context){
     if(open){$('workspaceSettingsNotice').hidden=true;showSettingsSection(settingsSection);window.scrollTo(0,0);$('workspaceHeading').focus({preventScroll:true});}
     else{for(const id of ['workspaceAdvanced','backupOptions','syncConfigDetails','deviceSettings','projectOptions','projectIdentitySettings','legacyBindingSettings','projectMountOptions','captureSetup'])$(id).open=false;$('captureSettingsButton').setAttribute('aria-expanded','false');window.scrollTo(workspaceScroll.x,workspaceScroll.y);$('workspaceToggle').focus({preventScroll:true});}
   };
-  $('identityReminder').addEventListener('click',e=>{if(!e.target.closest('[data-configure-project]'))return;setWorkspaceOpen(true);showSettingsSection('project');$('projectOptions').open=true;$('projectIdentitySettings').open=true;$('mappingForm').scrollIntoView({block:'start'});$('logicalId').focus({preventScroll:true});});
-  $('identityReminder').addEventListener('click',e=>{if(!e.target.closest('[data-configure-source]'))return;setWorkspaceOpen(true);showSettingsSection('project');$('projectOptions').open=true;$('projectIdentitySettings').open=true;$('sourceForm').scrollIntoView({block:'start'});$('sourcePath').focus({preventScroll:true});});
-  $('identityReminder').addEventListener('click',e=>{
-    if(!e.target.closest('[data-dismiss-source-reminder]')||!current.projectId)return;
-    dismissedSourceReminders.add(current.projectId);
-    try{localStorage.setItem(sourceReminderKey(current.projectId),'1');}catch{}
-    $('workspaceToggle').focus({preventScroll:true});
-    $('identityReminder').hidden=true;
-  });
   const clearSourceProof=()=>{sourceProof=null;$('saveSource').disabled=true;$('confirmSource').checked=false;$('sourceProof').textContent='修改目录后请重新核验。';};
   $('sourcePath').oninput=()=>{$('sourceForm').dataset.dirty='true';clearSourceProof();};
   $('previewSource').onclick=e=>run(e.currentTarget,async()=>{const id=current.projectId,path=$('sourcePath').value;const result=await api.post('workspace/source/preview',{projectId:id,sourcePath:path});if(current.projectId!==id||$('sourcePath').value!==path)return;sourceProof=result;$('sourceForm').dataset.dirty='true';$('sourceProof').textContent='会话入口：'+result.path+'；源码目录：'+result.sourcePath+'；仓库：'+result.repository+'。原逻辑身份保持。';$('confirmSource').checked=false;$('saveSource').disabled=false;});
@@ -179,6 +168,12 @@ export function initHub(context){
   const submit=(id,route,make,done)=>{$(id).onsubmit=e=>{e.preventDefault();const form=e.currentTarget,data=make(values(form));run(e.submitter,async()=>{const r=await api.post(route,data);form.dataset.dirty='false';await done?.(r,form);api.notice('设置已保存。');});};};
   submit('deviceForm','workspace/setup',v=>v);
   submit('mappingForm','workspace/map',v=>({...v,projectId:current.projectId,tags:v.tags.split(/[,，]/).map(s=>s.trim()).filter(Boolean),confirmed:v.confirmed==='on'}));
+  $('selectRepoCopy').onclick=e=>run(e.currentTarget,async()=>{
+    const project=current.state.projects.find(row=>row.projectId===current.projectId);
+    if(!project?.repository)return;
+    await api.post('workspace/select-repository',{projectId:project.projectId,repository:project.repository});
+    await api.load();
+  });
   submit('syncForm','sync/setup',v=>({...v,confirmed:v.confirmed==='on',includeRichFields:v.includeRichFields==='on',autoEnabled:v.autoEnabled==='on'}));
   $('syncAutoEnabled').onchange=async()=>{if(!current.state?.sync?.config)return;try{await api.post('sync/auto',{enabled:$('syncAutoEnabled').checked});await api.load();}catch(e){api.notice(e.message,true);}};
   submit('connectionForm','connection/setup',v=>v);
@@ -250,9 +245,17 @@ export function initHub(context){
   };
   initRestartDialog();
   $('checkWorkflow').onclick=e=>run(e.currentTarget,async()=>{const r=await api.post('workflow/check',{projectId:current.projectId});$('workflowResult').textContent=(r.status==='ready'?'结构检查通过，任务开始时仍需核实实际命令和安全规则。':'需要补齐：'+r.missing.join('、'))+' '+r.note;});
-  $('findInstances').onclick=e=>run(e.currentTarget,async()=>{const r=await api.post('connection/instances');$('instanceId').innerHTML='<option value="">请选择…</option>'+r.instances.map(i=>`<option value="${esc(i.id)}">${esc(i.label)}</option>`).join('');if(r.selected)$('instanceId').value=r.selected;else if(r.instances.length===1)$('instanceId').value=r.instances[0].id;});
+  $('findInstances').onclick=e=>run(e.currentTarget,async()=>{
+    const r=await api.post('connection/instances');
+    $('instanceId').innerHTML='<option value="">请选择…</option>'+r.instances.map(i=>`<option value="${esc(i.id)}">${esc(i.label)}</option>`).join('');
+    if(r.selected)$('instanceId').value=r.selected;
+    else if(r.instances.length===1)$('instanceId').value=r.instances[0].id;
+    $('connectionChats').replaceChildren(...(r.candidates??[]).map(chat=>new Option(chat.title||chat.id,chat.id)));
+  });
   $('syncNow').onclick=e=>run(e.currentTarget,async()=>{
     const {state,projectId}=current,mapping=state.workspace?.mappings?.[projectId];
+    const project=state.projects.find(row=>row.projectId===projectId);
+    if(state.sync?.config&&project?.repositoryReason&&(mapping?.localOnly||!mapping))throw Error(project.repositoryReason);
     const scoped=state.service?.projectBoardSyncSupported&&state.sync?.config?.schemaVersion>=2&&mapping&&!mapping.localOnly;
     let result;
     try{result=await api.post('sync/run',scoped?{projectId}:{});}
@@ -283,11 +286,12 @@ export function renderHub(state,projectId,{projectHref}={}){
   reconnectDataLocation?.(state.service);
   renderRestart(state);
   const w=state.workspace??{mappings:{}},project=state.projects.find(p=>p.projectId===projectId),mapping=w.mappings?.[projectId];
-  $('setupGuideEntry').hidden=!!(state.caller&&w.deviceLabel&&w.controllerProjectId);
+  $('setupGuideEntry').hidden=!!state.caller;
   $('setupGuide').querySelector('[data-setup-target="logicalName"]').disabled=!project;
   $('setupGuide').querySelector('[data-setup-step="backup"]').hidden=!state.service?.backupConfigSupported;
   const controller=state.projects.find(p=>p.projectId===w.controllerProjectId),reason=w.projects?.find(p=>p.projectId===projectId)?.reason;
-  $('repositoryIdentity').textContent=project?.repository?('源码仓库：'+project.repository+' · '+(reason|| (mapping?.automatic?'已自动识别，无需手动绑定':'沿用已保存的项目身份'))):(mapping?.localOnly?'本地项目已自动配置；点击上传 GitHub，安排跨电脑接续任务。':project?.repositoryReason||'正在识别源码仓库');
+  $('repositoryIdentity').textContent=project?.repositoryReason||(project?.repository?'源码仓库 '+project.repository:mapping?.localOnly||project?.offlineOnly?'本地项目':'正在识别源码仓库');
+  $('selectRepoCopy').hidden=!project?.repository||!project.repositoryReason||!mapping?.localOnly;
   const controlAddress=viewAddress(location.href,{projectId:w.controllerProjectId??'',view:'control'});
   $('controlLink').href=controlAddress.href;
   const ownAddress=viewAddress(location.href,{view:'project',projectHref});
@@ -300,14 +304,6 @@ export function renderHub(state,projectId,{projectHref}={}){
   $('projectSettingsSummary').textContent=(reason?'项目配置待核对':mapping?.automatic?'项目已自动识别':mapping?'项目已关联':'项目待识别')+' · 对话按版块分配';
   $('githubUpgradeSettings').hidden=!!project?.repository||!!mapping?.sourcePath;
   const identity=`电脑：${w.deviceLabel||'未设置'} · 逻辑项目：${mapping?.logicalName||'未绑定'} · 总控：${controllerLabel}`;
-  const awaitingCatalog=!state.lastSync||!!state.connectionError;
-  const warning=awaitingCatalog?'':reason||(!w.deviceLabel?'请先设置电脑标签':!mapping?.logicalName?'当前项目尚未绑定逻辑项目':!w.controllerProjectId?'尚未选择总控项目':'');
-  const initialSetup=!awaitingCatalog&&!!project?.path&&!!w.deviceLabel&&!!controller&&!Object.prototype.hasOwnProperty.call(w.mappings??{},projectId)&&(!project.repository||!reason||reason==='请先核对并绑定当前项目的逻辑名称和本机目录');
-  const localReady=!awaitingCatalog&&project?.repositoryStatus==='local'&&!!mapping&&!reason;
-  const sourcePrompt='<span class="identity-setup"><span class="identity-setup-heading"><span>当前会话入口未关联源码。已上传的项目可关联已有源码目录。</span><button type="button" data-dismiss-source-reminder aria-label="关闭源码关联提示" title="关闭源码关联提示">×</button></span><button type="button" class="primary" data-configure-source>关联已有源码</button><button type="button" class="primary" data-upgrade-project>上传 GitHub</button><button type="button" data-initialize-workflow>补齐规范</button></span>';
-  const identityContent=localReady?(sourceReminderDismissed(projectId)?'':sourcePrompt):initialSetup?`<span class="identity-setup"><span title="${esc(project.repositoryReason||'')}">${!project.repository?'正在核对本地项目身份；读取失败时请检查目录与远程配置。':'正在自动关联源码仓库身份'}</span><button type="button" data-configure-project>检查配置</button><button type="button" data-initialize-workflow>补齐规范</button></span>`:warning?`<span class="identity-warning">⚠ ${esc(warning)}<br>${esc(identity)}<button type="button" data-configure-project>检查配置</button></span>`:'';
-  $('identityReminder').hidden=!identityContent;
-  if($('identityReminder').innerHTML!==identityContent)$('identityReminder').innerHTML=identityContent;
   renderWorkflowInitialization(state,projectId);
   $('workspaceContext').textContent=identity;
   $('workspaceLabel').textContent=w.deviceLabel||'未设置电脑';$('workspaceLabel').title=w.deviceLabel||'未设置电脑';
@@ -335,7 +331,7 @@ export function renderHub(state,projectId,{projectHref}={}){
   if(control)renderProjectOverview(state,w,projectId);
   else projectBoardUI?.render(null);
   for(const id of ['allocateProject','parentProject','threadProject'])select(id,state.projects);renderAllocationProperties();
-  const sync=state.sync??{},automatic=sync.automatic??{};if($('syncForm').dataset.dirty!=='true'){$('syncRichFields').checked=sync.config?sync.config.schemaVersion>=2:true;$('syncAutoEnabled').checked=sync.config?!!automatic.enabled:true;}const phase={disabled:'手动同步',waiting:'等待同步',syncing:'同步中',idle:'自动同步已就绪',retrying:'稍后重试',blocked:'等待处理'}[automatic.status]??'尚未同步';$('syncStatus').textContent=(sync.running?'同步中…':phase)+(sync.error||automatic.error?' · '+(sync.error||automatic.error):'')+(sync.lastSync?' · 上次 '+new Date(sync.lastSync).toLocaleTimeString():'');$('syncNow').disabled=!!sync.running||!sync.config;
+  const sync=state.sync??{},automatic=sync.automatic??{};if($('syncForm').dataset.dirty!=='true'){$('syncRichFields').checked=sync.config?sync.config.schemaVersion>=2:true;$('syncAutoEnabled').checked=!!automatic.enabled;}const phase={disabled:'手动同步',waiting:'等待同步',syncing:'同步中',idle:'自动同步已就绪',retrying:'稍后重试',blocked:'等待处理'}[automatic.status]??'尚未同步';$('syncStatus').textContent=(sync.running?'同步中…':phase)+(sync.error||automatic.error?' · '+(sync.error||automatic.error):'')+(sync.lastSync?' · 上次 '+new Date(sync.lastSync).toLocaleTimeString():'');$('syncNow').disabled=!!sync.running||!sync.config;
   const syncProblem=sync.error||automatic.error;
   $('syncOverview').textContent=sync.running?'同步中…':syncProblem?'同步暂时受阻':phase;
   $('syncOverview').title=syncProblem||'';$('syncConfigSummary').textContent=syncProblem?'查看同步问题':'同步设置';

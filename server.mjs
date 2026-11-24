@@ -40,15 +40,16 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {Bridge,connectionThreadId,discoverInstances} from './bridge.mjs';
+import {listLocalIndexThreads} from './codex-catalog-fallback.mjs';
 import {normalize,busy,matchingTurn,readJobTurn,jobTurnPatch,setBinding,validateBatch,prepareQueuedJob,queuedJobReason,queuedJobLocalReason,queuedThreadReason,executionSlotCount,dependencySatisfied,sourceAwareJob,sourceAwareJobs,sourcePathsOverlap} from './core.mjs';
 import {collectCatalog} from './catalog.mjs';
 import {loadModelRegistry,titlePurpose,canonicalTitle,threadModelView,defaultModelKey,threadModelRecord} from './model-routing.mjs';
-import {identifyProjects,reconcileRepositories} from './repository-identity.mjs';
+import {identifyProjects,inspectRepository,reconcileRepositories,repositoryLogicalId} from './repository-identity.mjs';
 import {executeTask,retryReviewedTask,syncTaskStates,resolveUncertainTask,resolveLegacyJob,cancelQueuedJob} from './board.mjs';
 import {configureSidecars,retrySidecars,restoreSidecarSession,BoardSidecars} from './board-sidecar.mjs';
 import {DesktopContext,contextPage,contextWriteAllowed} from './desktop-context.mjs';
 import {checkDesktop} from './desktop-check.mjs';
-import {configureWorkspace,mapProject,workspaceReason,workspaceView} from './workspace.mjs';
+import {configureWorkspace,defaultWorkspace,localBoard,mapProject,rememberWorkspaceProjects,syncWorkspaceReason,workspaceProjects,workspaceReason,workspaceView} from './workspace.mjs';
 import {changeProjectBoard,projectBoardView} from './project-board.mjs';
 import {portableTasks,mergeTasks,applyRemote,GithubTaskStore,mergeDeletedDependencies} from './task-sync.mjs';
 import {inspectWorkflow,developmentPrompt,validateProjectFolder,workflowProject,initializationPrompt,workflowReviewPrompt,queueInitialization} from './workflow.mjs';
@@ -138,6 +139,7 @@ repository=options.storageBackend==='sqlite'
   ?await openPanelSqliteStore({root,lockLease:dataLock,timeoutMs:options.sqliteTimeoutMs})
   :new StateStore(new JsonBackend(root,options.storageIO,schemaBackup),{normalize:syncTaskStates,commands:storeCommands});
 let state=repository.prepare(original=>initializePanelState(original,{caller:options.caller??(original===null||!process.env.PANEL_KEEP_CALLER?process.env.CODEX_THREAD_ID:undefined)}));
+defaultWorkspace(state.workspace,[]);
 const projectCatalog=new ProjectCatalog({config:()=>state.sync.config,makeStore});
 const diagnostics=new DiagnosticLog({root,now:options.now??Date.now,io:options.diagnosticIO??fs});
 const mutate=async(reduce,operation='domain')=>{const pending=repository.transaction({operation},reduce),result=pending?.then?await pending:pending;state=repository.view();diagnostics.observe(state);return result.value;};
@@ -154,7 +156,11 @@ function nativeComposerInput(body){
 }
 const directMessages=new DirectThreadSender({root,send:input=>bridge.call('send_message_to_thread',{threadId:input.threadId,hostId:'local',prompt:input.prompt})});
 const sessionReader=options.sessionReader??new LocalSessionReader();
-let catalog={projects:[],threads:[]},connectionError='',lastSync=null,refreshing,metadataRefreshing,connecting;
+const personalBoard=localBoard(dataDir);
+let catalog={projects:workspaceProjects(state,personalBoard),threads:[]},connectionError='',lastSync=null,refreshing,metadataRefreshing,connecting;
+let onboardingConnection,nextOnboardingAt=0,initialCallerPath='';
+const listDesktopInstances=options.discoverInstances??discoverInstances;
+const firstUseThreads=options.discoverInitialThreads??(allowMultiple=>listLocalIndexThreads(null,{timeoutMs:5000,allowMultiple}));
 const contextThreads=new Map();
 function rememberContextThreads(rows,title){
   for(const [id,entry] of contextThreads)if(entry.thread.title===title)contextThreads.delete(id);
@@ -169,8 +175,9 @@ function presentationCatalog(){
   }
   return {...catalog,threads:[...byId.values()]};
 }
-const nativePanels=new NativePanelSessions({catalog:()=>({...catalog,connectionError,lastSync}),state:()=>state,identifyThread:id=>sessionReader.identity?.(id)});
-const desktopContext=new DesktopContext({origin,getCatalog:()=>({...catalog,contextRoutes:Object.values(state.automation.routes)}),read:options.readDesktopContext,lookupThreads:sessionReader.contextThreads?.bind(sessionReader),rememberThreads:rememberContextThreads});
+const liveCatalog=()=>({...catalog,projects:catalog.projects.filter(project=>!project.offlineOnly)});
+const nativePanels=new NativePanelSessions({catalog:()=>({...liveCatalog(),connectionError,lastSync}),state:()=>state,identifyThread:id=>sessionReader.identity?.(id)});
+const desktopContext=new DesktopContext({origin,getCatalog:()=>({...liveCatalog(),contextRoutes:Object.values(state.automation.routes)}),read:options.readDesktopContext,lookupThreads:sessionReader.contextThreads?.bind(sessionReader),rememberThreads:rememberContextThreads});
 let desktopCheckFlight;
 let activitySnapshot=catalog;
 const refreshNow=options.now??Date.now;
@@ -230,16 +237,63 @@ async function connectBridge({probe=false}={}){
     await bridge.connect();catalogHealth.connected([state.caller,bridge.instanceId??'',bridge.pipe??'fixture'].join('|'));connectionError='';
   }catch(error){connectionError=error.message;catalogHealth.disconnected(error);throw error;}finally{connecting=null;}})();return connecting;
 }
+async function verifyConnection(caller,instanceId,expectedPath){
+  const candidate=makeBridge(caller,instanceId);
+  await candidate.connect();
+  const current=await readDesktopThread(candidate,{threadId:caller,turnLimit:1,maxOutputCharsPerItem:0},sessionReader);
+  const thread=current.thread;
+  if(thread?.id!==caller||thread.kind!=='codex'||thread.hostId!=='local'||!thread.cwd||
+    expectedPath&&normalize(thread.cwd)!==normalize(expectedPath))throw Error('调度任务不是所选实例可用的本机 Codex 对话');
+  return {candidate,path:thread.cwd};
+}
+function hasPendingConnectionWork(value){
+  return value.jobs.some(job=>['queued','sending','submitted','running','uncertain'].includes(job.status));
+}
+async function saveConnection(caller,instanceId,{candidate,path},expectedCaller){
+  await mutate(draft=>{
+    if(hasPendingConnectionWork(draft)||draft.caller!==expectedCaller)throw Error('连接核对期间项目或执行状态已变化');
+    draft.caller=caller;
+    draft.connection={instanceId};
+  });
+  initialCallerPath=path;
+  catalogHealth.invalidate();
+  Object.assign(bridge,candidate);
+}
+function connectOnFirstUse(){
+  if(onboardingConnection)return onboardingConnection;
+  if(state.caller||hasPendingConnectionWork(state)||refreshNow()<nextOnboardingAt)return Promise.resolve(false);
+  nextOnboardingAt=refreshNow()+30000;
+  onboardingConnection=(async()=>{
+    const instances=await listDesktopInstances();
+    if(instances.length!==1)return false;
+    const rows=await firstUseThreads(false);
+    if(rows.length!==1)return false;
+    const {id,cwd}=rows[0],instanceId=instances[0].id;
+    if(!connectionThreadId(id)||!cwd)return false;
+    const verified=await verifyConnection(id,instanceId,cwd);
+    if(closing||restarting||state.caller)return false;
+    await saveConnection(id,instanceId,verified,'');
+    return true;
+  })().catch(()=>false).finally(()=>{onboardingConnection=null;});
+  return onboardingConnection;
+}
 async function applyCatalog(nextCatalog,{metadata=false,generation=catalogHealth.generation}={}){
     nextCatalog.modelIndex={...modelIndex,source:modelRegistry.source,error:modelIndex.error||modelRegistry.error};
-    nextCatalog.projects=await identifyProjects(nextCatalog.projects,options.inspectRepository,state.workspace.mappings);
+    const live=await identifyProjects(nextCatalog.projects,options.inspectRepository,state.workspace.mappings);
+    nextCatalog.projects=workspaceProjects(state,personalBoard,live);
     if(generation!==catalogHealth.generation)throw catalogUnverified('桌面连接已变化，旧目录未采用');
     // Keep the validated local catalog available for sync to repair stale
     // identity caches. Reconciliation still rejects conflicting identities.
     catalog=nextCatalog;if(!metadata)activitySnapshot=nextCatalog;
-    const identityDraft=structuredClone(state);reconcileRepositories(identityDraft,nextCatalog.projects);
-    if(JSON.stringify(identityDraft.workspace.mappings)!==JSON.stringify(state.workspace.mappings))await mutate(draft=>reconcileRepositories(draft,nextCatalog.projects));
-    const sectionProjects=nextCatalog.projects.filter(p=>p.hostId==='local').map(p=>p.projectId);
+    const identify=draft=>{
+      rememberWorkspaceProjects(draft.workspace,live);
+      const savedCaller=nextCatalog.threads.find(thread=>thread.id===draft.caller&&thread.hostId==='local'&&thread.kind==='codex');
+      defaultWorkspace(draft.workspace,live,initialCallerPath||savedCaller?.cwd);
+      reconcileRepositories(draft,live);
+    };
+    const identityDraft=structuredClone(state);identify(identityDraft);
+    if(JSON.stringify(identityDraft.workspace)!==JSON.stringify(state.workspace))await mutate(identify);
+    const sectionProjects=live.map(project=>project.projectId);
     if(!syncRunning&&!maintenanceWaiting(state)&&fillEmptySectionDescriptions(identityDraft,sectionProjects))await mutate(draft=>fillEmptySectionDescriptions(draft,sectionProjects));
     // Persist only a hash, never the local pipe address. Reusing the same
     // desktop across a panel restart must not open another set of tabs.
@@ -249,7 +303,7 @@ async function applyCatalog(nextCatalog,{metadata=false,generation=catalogHealth
 async function refresh({automatic=false,force=true,threadId}={}){
   if(refreshing){const ready=await refreshing;if(managedQueue&&threadId&&ready)await read(threadId);return ready;}
   if(restarting||closing)return false;
-  if(managedQueue&&!catalog.projects.length){if(await refreshMetadata()===false)throw catalogUnverified(connectionError||'本机项目目录尚未取得');}
+  if(managedQueue&&!catalog.projects.some(project=>!project.offlineOnly)){if(await refreshMetadata()===false)throw catalogUnverified(connectionError||'本机项目目录尚未取得');}
   refreshing=(async()=>{try{
     if(managedQueue){
       await connectBridge();
@@ -280,7 +334,9 @@ function refreshMetadata(){
   if(metadataRefreshing)return metadataRefreshing;
   if(restarting||closing)return Promise.resolve(false);
   metadataRefreshing=(async()=>{try{
-    await refreshing;await connectBridge();const generation=catalogHealth.generation;
+    await refreshing;
+    if(!state.caller&&!await connectOnFirstUse())return false;
+    await connectBridge();const generation=catalogHealth.generation;
     const next=await collectCatalog(bridge,state,{models:modelRegistry.models,threadModels:ids=>threadModelIndex(ids),previousThreads:catalog.threads,sessionReader,localCatalogFallback:options.localCatalogFallback,metadataOnly:true});
     if(generation!==catalogHealth.generation)return false;
     await applyCatalog(next,{metadata:true,generation});void sidecars.synchronize();return true;
@@ -290,6 +346,10 @@ async function lightTick(){
   if(restarting||closing)return;
   if(!projectCatalog.pending)track(projectCatalog.refresh()).catch(()=>{});
   const now=refreshNow();
+  if(!state.caller){
+    if(await connectOnFirstUse())await refreshMetadata();
+    return;
+  }
   if(now-lastCurrentThreadResultCheckAt>=2000&&state.jobs.some(activeCurrentThreadResult))void reconcileExecutions({currentThreadOnly:true});
   if(now>=nextHeartbeatAt){nextHeartbeatAt=now+30000;try{await connectBridge({probe:true});}catch{return;}}
   if(now>=nextMetadataAt){nextMetadataAt=now+60000;await refreshMetadata();}
@@ -528,7 +588,7 @@ async function synchronizeTasks(){
     if(!remote.sha&&state.sync.base.length)throw new Error('远端待办文件缺失，请先核对同步位置；没有覆盖本机记录');
     const identityDraft=structuredClone(state),projectIdentities=reconcileRepositories(identityDraft,catalog.projects,remote.projects??[],remote.records);
     if(JSON.stringify(identityDraft.workspace.mappings)!==JSON.stringify(state.workspace.mappings))await mutate(draft=>reconcileRepositories(draft,catalog.projects,remote.projects??[],remote.records));
-    const syncProjects=catalog.projects.filter(p=>!workspaceReason(state,p));
+    const syncProjects=catalog.projects.filter(p=>!syncWorkspaceReason(state,p));
     checkSyncable();const mappingAtMerge=JSON.stringify(state.workspace.mappings),local=portableTasks(state),merged=mergeTasks(state.sync.base,local,remote.records,state.sync.overrides);
     if(merged.conflicts.length){await mutate(draft=>{draft.sync.conflicts=merged.conflicts;});throw new Error('有 '+merged.conflicts.length+' 项待办冲突'+(merged.conflicts[0].reason?'（'+merged.conflicts[0].reason+'）':'')+'，请选择保留内容后再同步');}
     const files=rich?await hydrateRichAttachments(root,state,merged.records,syncProjects,store,async file=>await mutate(draft=>{draft.attachments[file.id]=file;})):new Map();
@@ -555,7 +615,9 @@ async function synchronizeTasks(){
 function boardSyncTarget(projectId){
   const project=catalog.projects.find(row=>row.projectId===projectId&&row.hostId==='local');
   const mapping=state.workspace.mappings[projectId];
-  if(!project||!mapping||mapping.localOnly||workspaceReason(state,project))throw Error('请先核对当前项目的逻辑身份和本机目录');
+  if(!project||!mapping)throw Error('请先核对当前项目的逻辑身份和本机目录');
+  const reason=syncWorkspaceReason(state,project);
+  if(reason)throw Error(reason);
   if(!(state.sync.config?.schemaVersion>=2))throw Error('请先配置私有分支并启用完整卡片同步');
   const {repo,branch}=state.sync.config;
   const key=boardSyncKey(JSON.stringify([repo,branch,mapping.logicalId]));
@@ -1096,6 +1158,7 @@ async function handleRequest(req,res){
       if(['/api/projects/sync-current','/api/projects/sync-composer','/api/tasks/send-current','/api/composer/send','/api/composer/submit'].includes(url.pathname)&&!nativeSession&&!req.headers['x-panel-page'])return json(res,409,{error:'请在当前项目的对话侧栏中操作',notApplied:true});
       if(url.pathname==='/api/tasks/execute'&&b.accept===true){
         const task=state.tasks.find(t=>t.id===b.id);if(!task||b.projectId!==task.projectId)throw Error('接收项目与任务不匹配');
+        if(task.projectId===personalBoard.projectId)return json(res,400,{error:'本地看板用于记录任务，请在关联 Codex 的项目看板中安排执行',notApplied:true});
         if(req.headers['x-panel-page']){let page;try{page=new URL(req.headers['x-panel-page']);}catch{}if(page?.origin!==origin||page.searchParams.get('projectId')!==task.projectId)throw Error('接收页面与任务项目不匹配');}
       }
       if(!nativeSession&&req.headers['x-panel-page']&&url.pathname!=='/api/refresh'&&!(url.pathname==='/api/tasks/execute'&&b.accept===true)){
@@ -1299,6 +1362,19 @@ async function handleRequest(req,res){
         await refreshMetadata();catalog.projects=await identifyProjects(catalog.projects,options.inspectRepository,state.workspace.mappings);return json(res,200,{ok:true,...result});
       }
       if(url.pathname==='/api/workspace/map'){await mutate(draft=>mapProject(draft,b,catalog.projects));return json(res,200,{ok:true});}
+      if(url.pathname==='/api/workspace/select-repository'){
+        const project=catalog.projects.find(row=>row.projectId===b.projectId);
+        if(!project?.repository||project.offlineOnly||b.repository!==project.repository)throw Error('仓库识别已变化，请刷新后重新选择');
+        const verified=await (options.inspectRepository??inspectRepository)(project,{fresh:true});
+        if(verified.repository!==project.repository||catalog.projects.find(row=>row.projectId===b.projectId)!==project)throw Error('仓库识别已变化，请刷新后重新选择');
+        await mutate(draft=>{
+          const known=draft.sync.projectIdentities?.find(row=>row.repository===project.repository);
+          const current=draft.workspace.mappings[b.projectId];
+          const logicalId=known?.logicalId??(current&&!current.localOnly?current.logicalId:repositoryLogicalId(project.repository));
+          mapProject(draft,{projectId:project.projectId,confirmed:true,logicalId,logicalName:known?.projectName??project.label,tags:current?.tags},catalog.projects);
+        });
+        return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/workflow/check'){
         const project=workflowProject(catalog.projects.find(p=>p.projectId===b.projectId));
         return json(res,200,await inspectProjectWorkflow(project));
@@ -1415,14 +1491,19 @@ async function handleRequest(req,res){
         const result=await ensureThreadNaming(b.threadId,typeof b.purpose==='string'?b.purpose.slice(0,80):'');
         return json(res,200,{ok:true,...result});
       }
-      if(url.pathname==='/api/connection/instances')return json(res,200,{instances:(await discoverInstances()).map(({id,label})=>({id,label})),selected:bridge.instanceId});
+      if(url.pathname==='/api/connection/instances'){
+        const instances=await listDesktopInstances();
+        const candidates=!state.caller&&instances.length===1?await firstUseThreads(true).catch(()=>[]):[];
+        return json(res,200,{instances:instances.map(({id,label})=>({id,label})),selected:bridge.instanceId,candidates:candidates.map(({id,title})=>({id,title}))});
+      }
       if(url.pathname==='/api/connection/setup'){
-        if(state.jobs.some(j=>['queued','sending','submitted','running','uncertain'].includes(j.status)))throw new Error('尚有在途任务，不能切换调度连接');
+        if(hasPendingConnectionWork(state))throw new Error('尚有在途任务，不能切换调度连接');
         const caller=connectionThreadId(b.caller);
         if(!caller||typeof b.instanceId!=='string')throw new Error('请选择本机实例并填写有效的 Codex 聊天链接或 ID');
-        const candidate=makeBridge(caller,b.instanceId);await candidate.connect();const current=await readDesktopThread(candidate,{threadId:caller,turnLimit:1,maxOutputCharsPerItem:0},sessionReader);
-        if(current.thread?.id!==caller||current.thread?.kind!=='codex'||current.thread?.hostId!=='local')throw new Error('调度任务不是所选实例可用的本机 Codex 对话');
-        await mutate(draft=>{if(draft.jobs.some(j=>['queued','sending','submitted','running','uncertain'].includes(j.status)))throw Error('连接核对期间已有在途任务，未切换连接');draft.caller=caller;draft.connection={instanceId:b.instanceId};});catalogHealth.invalidate();Object.assign(bridge,candidate);await refreshMetadata();return json(res,200,{ok:true});
+        const previous=state.caller;
+        const verified=await verifyConnection(caller,b.instanceId);
+        await saveConnection(caller,b.instanceId,verified,previous);
+        await refreshMetadata();return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/boards/enable'||url.pathname==='/api/boards/disable'){
         const enable=url.pathname.endsWith('/enable');await mutate(draft=>configureSidecars(draft,b,catalog,enable));
@@ -1735,7 +1816,7 @@ function close(){
     });
     // Requests and refreshes can start child writes before they settle. Drain
     // again after each round so no writer survives the returned close promise.
-    for(;;){const pending=[...pendingOperations,...directSync.active.values(),...directMessages.active.values(),composer.active?.promise,projectCatalog.pending,ticking,refreshing,metadataRefreshing,connecting,sidecars.running].filter(Boolean);if(!pending.length)break;await Promise.allSettled(pending);}
+    for(;;){const pending=[...pendingOperations,...directSync.active.values(),...directMessages.active.values(),composer.active?.promise,projectCatalog.pending,ticking,refreshing,metadataRefreshing,connecting,onboardingConnection,sidecars.running].filter(Boolean);if(!pending.length)break;await Promise.allSettled(pending);}
     await desktopContext.close();await repository.close();await dataLock.release();
   })();return closePromise;
 }

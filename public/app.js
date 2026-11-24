@@ -28,12 +28,14 @@ const eventLabels={'execution-cancelled':'已取消未发送任务','source-arch
 const lanes=[['todo','待执行','单项执行，或多选后批量安排','写下下一件要做的事'],['running','执行中','已手动提交，跟踪本轮进度','执行后，进度会出现在这里'],['review','待审阅','满意点通过，继续可立即处理或稍后处理','对话结束后等你审阅'],['done','已完成','已审阅或已核对完成','保留每一次完成记录']];
 const query=new URLSearchParams(location.search),locked=query.has('projectId');
 const {ProjectFollower}=bootstrapState.service?.desktopContextSupported?await import('./project-context.js'):{};
-const canFollowProject=bootstrapState.service?.desktopContextSupported===true&&bootstrapState.service?.nativeMode!=='thread'&&locked;
+const canFollowProject=bootstrapState.service?.desktopContextSupported===true&&bootstrapState.service?.nativeMode!=='thread'&&locked&&query.get('standalone')!=='1';
 const followsProject=()=>canFollowProject&&!['control','versions'].includes(query.get('view'));
 if(canFollowProject){const address=new URL(location.href);if(address.searchParams.get('follow')==='off'){address.searchParams.delete('follow');query.delete('follow');}if(!address.searchParams.has('panelSession'))address.searchParams.set('panelSession',crypto.randomUUID());query.set('panelSession',address.searchParams.get('panelSession'));history.replaceState(history.state,'',address);}
 // 旧版侧栏曾把总控视图写入对话地址；带对话绑定的看板一律回到项目看板，总控只由项目级入口打开。
 if(query.get('view')==='control'&&query.has('threadId')){query.delete('view');const clean=new URL(location.href);clean.searchParams.delete('view');history.replaceState(null,'',clean);}
-let projectId=query.get('projectId')??'',state={projects:[],threads:[],bindings:{},tasks:[],jobs:[]},connected=false,loading=false,detailId='',editId='',boardKey='',catalogKey='',detailKey='',bindingDirty=false;
+const lastProject=readStore('paiban:last-project','');
+const initialProject=bootstrapState.projects?.some(project=>project.projectId===lastProject)?lastProject:bootstrapState.workspace?.defaultProjectId;
+let projectId=query.get('projectId')??initialProject??'',state={projects:[],threads:[],bindings:{},tasks:[],jobs:[]},connected=false,loading=false,detailId='',editId='',boardKey='',catalogKey='',detailKey='',bindingDirty=false;
 let taskGroupsUI;
 const {PanelReader,catalogConnectionView,catalogExecutionBlock}=await import('./read-client.js');
 const {PanelSnapshots}=await import('./read-client.js');
@@ -155,10 +157,10 @@ function currentJob(t){return state.jobs.find(j=>j.id===t.currentJobId&&j.taskId
 function plainQueuedJob(t){const j=currentJob(t);return t.status==='running'&&j?.status==='queued'?j:null;}
 function openCard(id){const t=task(id);if(editableTask(t,state))return openEditor(id);return showDetail(id);}
 function projectChanged(renderNow=true){taskGroupsUI?.close();for(const id of ['editor','detail','propertyManager','recognitionDialog','historyDialog','pendingDialog','autoPlanDialog','planImportDialog','sectionEditor'])$(id).close();detailId='';editId='';bindingDirty=false;boardKey=catalogKey=detailKey='';drafts=readStore(draftKey(),{});selectedLane=lanes.some(l=>l[0]===drafts.selectedLane)?drafts.selectedLane:'todo';$('reviewNote').value='';$('importId').value='';$('board').scrollLeft=0;if(renderNow)render();}
-function renderCatalog(){const p=getProject();$('setup').hidden=locked;$('projectView').hidden=!p;
+function renderCatalog(){const p=getProject();$('setup').hidden=locked||state.projects.length<2;$('projectView').hidden=!p;
   if(!locked){const key=JSON.stringify(state.projects);if($('projectSelect').dataset.key!==key){$('projectSelect').innerHTML='<option value="">选择项目…</option>'+state.projects.map(p=>`<option value="${esc(p.projectId)}">${esc(p.label)}</option>`).join('');$('projectSelect').dataset.key=key;}$('projectSelect').value=projectId;}
   if(!p){if(locked){notice(state.connectionError?(state.service?.catalogRecoverySupported?'连接正在自动恢复，已保存的项目和任务会保留。':'桌面连接暂不可用：'+state.connectionError+' 已保存的项目配置仍保留，连接恢复后会重新读取。'):state.lastSync?'此项目不存在或尚未读取成功，请刷新连接；不会显示其他项目的数据。':'正在连接桌面并读取本机项目，已保存配置会保留。',!!state.connectionError||!!state.lastSync);$('notice').dataset.catalogNotice='true';}return;}if($('notice').dataset.catalogNotice){notice('');delete $('notice').dataset.catalogNotice;}
-  $('projectTitle').textContent=p.label;$('projectPath').textContent=p.path;$('context').textContent=locked?'CODEX / 当前项目':'项目预览 / 首次挂载设置';
+  $('projectTitle').textContent=p.label;$('projectPath').textContent=p.personal?'':p.path;$('context').textContent=canFollowProject||state.service?.nativeMode==='thread'?'CODEX / 当前项目':'项目看板';
   const threads=state.threads.filter(t=>t.kind==='codex'&&t.hostId==='local'&&norm(t.cwd)===norm(p.path)),bound=state.bindings[projectId],qThread=threads.find(t=>t.id===query.get('threadId')),key=JSON.stringify([threads,bound]);
   if(catalogKey!==key){const previous=$('binding').value;$('binding').innerHTML='<option value="">选择执行对话…</option>'+threads.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}${t.modelSource==='unknown'||!t.modelLabel?' · 模型未确认':' · '+esc(t.modelLabel)}${t.titleIssue?' · 命名待修正':''}${t.id===qThread?.id?' · 当前对话':''}</option>`).join('');$('binding').value=bindingDirty&&(previous===''||threads.some(t=>t.id===previous))?previous:(bound??'');catalogKey=key;}
   const boundThread=threads.find(t=>t.id===bound),indexIssue=state.modelIndex&&state.modelIndex.available===false?'本机对话索引不可读：模型只按标题后缀识别。'+String(state.modelIndex.error||''):'';
@@ -197,7 +199,7 @@ function card(t,dependencies=''){
   const rawSummary=['review','done'].includes(lane)&&job?.result?job.result:t.sourceKind==='conversation'?(t.summary??'原始需求与对话来源已记录'):t.description??'';
   const summary=rawSummary.trim()===t.title.trim()?'':rawSummary.replace(/\s+/g,' ').trim().slice(0,160);
   const hint=warning?displayStatus:lane==='todo'?reason:'';
-  const executeAction=scheduledAction(t,actionOptions)||`<button class="primary" data-action="execute" data-id="${esc(t.id)}" ${(!accepting&&reason)||pending.has(t.id)?'disabled':''}>${pending.has(t.id)?'提交中…':'执行'}</button>`;
+  const executeAction=!state.caller||getProject()?.offlineOnly?'':scheduledAction(t,actionOptions)||`<button class="primary" data-action="execute" data-id="${esc(t.id)}" ${(!accepting&&reason)||pending.has(t.id)?'disabled':''}>${pending.has(t.id)?'提交中…':'执行'}</button>`;
   const recovery=executionRecovery?.cardParts(t)??{message:'',actions:'',actionKinds:[]};
   const planManage=lane==='running'&&!recovery.actionKinds.includes('plan')?executionManagement(t):'';
   const queuedActions=lane==='running'&&!scheduled&&!planManage&&job?.status==='queued'?`<button data-action="return-queued" data-id="${esc(t.id)}" ${pending.has(t.id)||(!connected&&!state.service?.backgroundChecksSupported)?'disabled':''} title="取消排队并回到待执行，未发送">回退</button>${recovery.actionKinds.includes('edit')?'':`<button data-action="edit" data-id="${esc(t.id)}" ${pending.has(t.id)?'disabled':''}>修改</button>`}`:'';
@@ -333,10 +335,10 @@ function renderMount(){
   const content=`<p class="hint">自动打开本项目对话的侧面看板。</p><div class="input-row"><button data-mount="${enabled?'disable':'enable'}" ${!connected||pending.has('mount')?'disabled':''}>${enabled?'停用自动挂载':'启用此项目右侧看板'}</button>${enabled?`<button data-mount="retry" ${!connected||pending.has('mount')?'disabled':''}>重试失败的挂载</button>`:''}</div><p class="hint">${enabled?'已启用。停用只停止新挂载，不关闭已打开的白板。':'尚未启用。'} ${records.filter(a=>a.status==='attached').length} 个挂载请求成功 · ${records.filter(a=>a.status==='queued').length} 个待切到对应对话显示 · ${records.filter(a=>a.status==='attaching').length} 个挂载中</p>${records.filter(a=>a.status==='failed').map(a=>`<p class="error">挂载失败：${esc(state.threads.find(t=>t.id===a.threadId)?.title??a.threadId)} · ${esc(a.error)}</p>`).join('')}${boards.error?`<p class="error">${esc(boards.error)}</p>`:''}`;
   $('mountOptionsSummary').textContent='侧栏 · '+(enabled?'自动挂载已开启':'自动挂载未开启');
   if($('mountSettings').innerHTML!==content)$('mountSettings').innerHTML=content;
-  let global=$('globalMount');if(!global){global=document.createElement('div');global.id='globalMount';$('setup').append(global);}
+  let global=$('globalMount');if(!global){global=document.createElement('div');global.id='globalMount';$('mountSettings').after(global);}
   const globalContent=`<p class="hint">为每个项目自动挂载，之后切换 Codex 对话即可查看对应项目。</p><button data-mount="${boards.mode==='all'?'disable':'enable'}" data-all="true" ${!connected||pending.has('mount')?'disabled':''}>${boards.mode==='all'?'停用所有项目自动挂载':'启用所有项目右侧看板'}</button>`;if(global.innerHTML!==globalContent)global.innerHTML=globalContent;
 }
-function render(){executionRecovery?.update();updateTaskOrganization(state,projectId);updatePlanUI(state,projectId);updateAutomation(state,projectId);updateLineage(state,projectId,pageMode()==='references');updateProperties(state,projectId);renderCatalog();$('newTask').disabled=!pageDataReady||!Object.hasOwn(state,'propertyGroups');$('projectSelect').disabled=pending.size>0;renderMount();if(getProject()){renderBoard();renderDetail();}renderHub(state,projectId,{projectHref:projectAddress});blockContext(contextBlocked,contextReason);placeIdentityReminder();updateLineage(state,projectId,pageMode()==='references');updateAutomation(state,projectId);updateProjectMenu();alignFrozenBackground();}
+function render(){executionRecovery?.update();updateTaskOrganization(state,projectId);updatePlanUI(state,projectId);updateAutomation(state,projectId);updateLineage(state,projectId,pageMode()==='references');updateProperties(state,projectId);renderCatalog();$('newTask').disabled=!pageDataReady||!Object.hasOwn(state,'propertyGroups');$('projectSelect').disabled=pending.size>0;renderMount();if(getProject()){renderBoard();renderDetail();}renderHub(state,projectId,{projectHref:projectAddress});blockContext(contextBlocked,contextReason);updateLineage(state,projectId,pageMode()==='references');updateAutomation(state,projectId);updateProjectMenu();alignFrozenBackground();}
 let loadingVersion=-1,readGeneration=0,refreshSuspended=true,refreshTimer=null;
 function scheduleRefresh(){
   clearTimeout(refreshTimer);refreshTimer=null;
@@ -393,7 +395,7 @@ async function load(){
     if(capturedProject!==projectId||capturedRoute!==routeVersion||capturedGeneration!==readGeneration)return;if(capturedRecovery!==(executionRecovery?.taskId()??'')){loadAgain=true;return;}if(state.service?.instanceId&&next.service?.instanceId!==state.service.instanceId)routeStates.clear();state=next;pageDataReady=true;state.tasks=(state.tasks??[]).map(readableSourceTask);state.jobs??=[];rememberRoute();blockContext(contextBlocked,contextReason);
     const connection=catalogConnectionView(state);connected=connection.connected;$("connection").dataset.catalog=state.service?.catalogHealth?.recovering?"recovering":state.service?.catalogHealth?.activities??"";$('connection').textContent=verificationPending?'正在核对任务状态':connection.text;if(connection.reason)notice(connection.reason,!state.service?.catalogRecoverySupported,'connection');else if(connected)clearConnectionNotice();
   }catch(e){if(capturedRoute!==routeVersion||capturedGeneration!==readGeneration)return;connected=false;const recovering=state.service?.catalogRecoverySupported;$('connection').textContent=recovering?'自动恢复中':'连接断开';notice(recovering?'面板正在重新连接，请稍候。任务和草稿已保留。':'服务读取失败：'+e.message,!recovering,'connection');}
-  finally{if(capturedRoute===routeVersion){loading=false;if(capturedGeneration===readGeneration){$('connection').dataset.ok=String(connected);render();}if(loadAgain){loadAgain=false;void load();}}}
+  finally{if(capturedRoute===routeVersion){loading=false;if(capturedGeneration===readGeneration){$('connection').dataset.ok=$('connection').textContent==='本地模式'?'local':String(connected);render();}if(loadAgain){loadAgain=false;void load();}}}
 }
 async function ensureTask(id){
   if(!reader)return task(id);const captured=projectId,value=await reader.detail(captured,id);if(captured!==projectId)return null;
@@ -433,7 +435,13 @@ async function openEditor(id='',sectionId='',groupId=null,{matchGroup=false}={})
   const scheduled=t?scheduledTaskState(t,state):null,arranged=!!(queuedJob||scheduled);
   const content=Object.hasOwn(d,'taskMode')?d:readTaskModeContent(d.description||d.title||'');
   $('editorTitle').textContent=scheduled?.status==='paused'?'修改暂停任务':arranged?'修改排队任务':id?'编辑任务':group?'在此分组新建任务':section?'在此版块新建任务':'新建任务';$('taskDescription').value=content.description;renderPropertyEditor(d,!!id);executionEditor(d,id);editorFiles=structuredClone(d.attachments??[]);renderEditorFiles();$('taskFiles').value='';$('editorError').className='error';$('editorError').setAttribute('role','alert');$('editorError').textContent='';$('taskEditorHelp').open=false;openTaskOrganization(d,!!id,{legacyReceipt,matchGroup:matchGroup&&!receipt?.savePending&&!receipt?.attempted});
-  $('taskExecution').hidden=!!queuedJob;$('executeEditorTask').hidden=arranged;$('sendEditorWindow').hidden=arranged;$('saveTask').textContent='保存';$('editorQueuedHint').hidden=!arranged;$('editorQueuedHint').textContent=scheduled?.status==='paused'?'保存后保持暂停，点击继续时使用最新内容。':'保存后原队列使用最新内容，不会重复安排。';
+  const localOnly=!state.caller||getProject()?.offlineOnly;
+  $('taskExecution').hidden=!!queuedJob||localOnly;
+  $('executeEditorTask').hidden=arranged||localOnly;
+  $('sendEditorWindow').hidden=arranged||localOnly||!query.has('threadId')||(!followsProject()&&state.service?.nativeMode!=='thread');
+  $('saveTask').textContent='保存';
+  $('editorQueuedHint').hidden=!arranged;
+  $('editorQueuedHint').textContent=scheduled?.status==='paused'?'保存后保持暂停，点击继续时使用最新内容。':'保存后原队列使用最新内容，不会重复安排。';
   setTaskMode(content.taskMode);
   $('editor').showModal();$('taskDescription').focus();
 }
@@ -481,7 +489,7 @@ $('sendEditorWindow').onclick=()=>{if($('taskForm').reportValidity())void submit
 $('editor').addEventListener('cancel',e=>{if(pending.has('editor'))e.preventDefault();});
 $('board').addEventListener('click',e=>{const b=e.target.closest('[data-section-create]');if(b){e.preventDefault();e.stopPropagation();void openEditor('',b.dataset.sectionCreate);}},true);
 $('newTask').onclick=()=>openEditor('','',null,{matchGroup:true});
-$('projectSelect').onchange=()=>{projectId=$('projectSelect').value;state.tasks=[];state.jobs=[];state.query=null;projectChanged();void load();};
+$('projectSelect').onchange=()=>{projectId=$('projectSelect').value;saveStore('paiban:last-project',projectId);state.tasks=[];state.jobs=[];state.query=null;projectChanged();void load();};
 $('binding').onchange=()=>{bindingDirty=true;renderCatalog();};
 async function renameProjectThread(id){if(!id||pending.has('rename'))return;pending.add('rename');render();try{const result=await post('threads/rename',{threadId:id});notice(result.renamed?'已按规范重命名为：'+result.title:result.reason?'未改写标题：'+result.reason:'当前标题已符合规范：'+result.title);await load();}catch(e){notice(e.message,true);}finally{pending.delete('rename');render();}}
 $('renameThread').onclick=()=>renameProjectThread($('binding').value||state.bindings[projectId]);
@@ -671,11 +679,6 @@ document.addEventListener('toggle',async e=>{
 },true);
 const frozenControls=document.createElement('div');frozenControls.id='projectFrozenControls';
 const projectHeading=$('projectView').querySelector('.project-heading');projectHeading.before(frozenControls);frozenControls.append(projectHeading,document.querySelector('.lane-tools'));
-function placeIdentityReminder(){
-  const reminder=$('identityReminder');
-  if(!$('projectView').hidden){if(reminder.previousElementSibling!==frozenControls)frozenControls.after(reminder);}
-  else if(reminder.parentElement!==$('workspaceHub'))$('workspaceConfig').before(reminder);
-}
 const mobileDock=document.createElement('nav');mobileDock.id='mobileDock';mobileDock.setAttribute('aria-label','移动端导航');mobileDock.innerHTML='<div class="mobile-dock-nav"></div>';document.body.append(mobileDock);
 const dockNav=mobileDock.querySelector('.mobile-dock-nav');
 const hubSwitch=document.querySelector('.hub-switch'),workspaceTools=document.querySelector('.app-bar>.workspace-tools'),taskViewSwitch=document.querySelector('.task-view-switch'),organizePlan=$('organizePlan');
