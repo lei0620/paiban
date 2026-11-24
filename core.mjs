@@ -2,7 +2,7 @@ import {handoffPending,handoffLockReason} from './handoff-state.mjs';
 import {scopeConflict} from './execution-scope.mjs';
 import {modelKeyOf,modelLabel} from './model-routing.mjs';
 import {awaitsReply} from './public/rounds.js';
-import {messageText,sameDispatchText,CURRENT_THREAD_DELIVERY,dispatchQueueJobs,trackedCurrentThread,steeringCurrentThread,steeringInputIndex} from './dispatch-state.mjs';
+import {messageText,sameDispatchText,CURRENT_THREAD_DELIVERY,dispatchQueueJobs,trackedCurrentThread,steeringCurrentThread,steeringInputIndex,taskIdCurrentThread} from './dispatch-state.mjs';
 export const normalize=p=>(p??'').replaceAll('/','\\').replace(/\\+$/,'').toLowerCase();
 export const sourcePathOf=project=>project.sourcePath||project.path;
 // Source roots are local queue projections. Never change the durable entry
@@ -39,7 +39,13 @@ export function executionSlotCount(jobs){
 }
 export function matchingTurn(turns,job){
   if(trackedCurrentThread(job)){
-    const matches=turns.filter(t=>(!job.turnId||t.id===job.turnId)&&steeringInputIndex(t,job)>=0);
+    let candidates=turns;
+    if(taskIdCurrentThread(job)&&!job.turnId&&job.baseline!=null){
+      const baseline=turns.findIndex(turn=>turn.id===job.baseline);
+      if(baseline<0)return undefined;
+      candidates=turns.slice(0,baseline);
+    }
+    const matches=candidates.filter(t=>(!job.turnId||t.id===job.turnId)&&steeringInputIndex(t,job)>=0);
     return matches.length===1?matches[0]:undefined;
   }
   if(job.turnId)return turns.find(t=>t.id===job.turnId);
@@ -90,7 +96,7 @@ export async function readJobTurn(readPage,job,maxPages=6){
     const match=matchingTurn(turns,job);if(match&&(job.turnId||seen.has(job.baseline)||job.dispatchVersion===2&&job.deliveryKind==='create'))return {turn:match,pages:page+1};
     if(!job.correlationToken&&!job.turnId&&seen.has(job.baseline))return {pages:page+1,reason:'基线后的轮次无法唯一关联，请核对原对话'};
     const next=response.page?.nextCursor;
-    if(!next)return match?{turn:match,pages:page+1}:{pages:page+1,reason:'尚未找到本轮唯一标识，保留未确认状态'};
+    if(!next)return match?{turn:match,pages:page+1}:{pages:page+1,reason:taskIdCurrentThread(job)?'尚未在发送后的轮次找到本次任务消息，保留未确认状态':'尚未找到本轮唯一标识，保留未确认状态'};
     if(next===cursor)return {pages:page+1,reason:'历史游标重复，保留未确认状态'};
     cursor=next;
   }

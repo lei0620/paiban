@@ -10,7 +10,7 @@ const normalize=value=>String(value??'').replaceAll('/','\\').replace(/\\+$/,'')
 const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]]));
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 const taskFields='id projectId title shortId status tag typeName priority attributes createdAt updatedAt completedAt archivedAt sectionId boardGroupId parentId dependsOn pendingDependencies pendingParentId workflowStage historyOnly sourceKind sourceIds execution syncReserved currentJobId lastJobStatus delivery autoProperties pendingContinuation initialDispatch createRequestId boardSyncReplica boardSyncPrivateDescription'.split(' ');
-const jobFields='id taskId projectId status createdAt finishedAt title threadId turnId origin message error modelKey modelLabel modelActual modelMismatch roundId continuedFromJobId inputKind awaitingUser modelTarget modelProvider modelRouted routeMessage'.split(' ');
+const jobFields='id taskId projectId status createdAt finishedAt title threadId turnId origin deliveryKind message error modelKey modelLabel modelActual modelMismatch roundId continuedFromJobId inputKind awaitingUser modelTarget modelProvider modelRouted routeMessage'.split(' ');
 const taskSummary=t=>({...pick(t,taskFields),executionRevision:instructionHash(t),description:presentTask({...t,history:undefined}).description?.slice(0,300)??'',_partial:true});
 const jobSummary=j=>({...pick(j,jobFields),_partial:true});
 const jobDetail=j=>({...pick(j,[...jobFields,'prompt','result','finalResult','attachments']),...(j.routedPrompt!==undefined?{prompt:j.routedPrompt}:{})});

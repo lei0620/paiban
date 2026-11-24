@@ -17,9 +17,9 @@
 
 ## 快速开始
 
-### Windows 安装包（待发布）
+### Windows 安装包
 
-发布后可从 [GitHub Releases](https://github.com/lei0620/paiban/releases) 下载 Windows x64 安装包。安装完成页勾选「打开派板」，以后也可以从 Windows 开始菜单打开。安装包包含运行组件，日常使用无需运行命令。
+从 [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) 下载最新的 Windows x64 安装包，并双击运行。安装完成页勾选「打开派板」，以后也可以从 Windows 开始菜单打开。安装包包含运行组件，日常使用无需运行命令。
 
 首次打开时，点击「开始设置」连接已登录的 Codex 桌面应用。使用聊天链接或 ID 完成连接。需要在 Codex 聊天中使用白板时，从开始菜单选择「接入 Codex 白板」，并按提示重新打开 Codex。私有仓库仅在需要跨电脑同步时配置。
 
@@ -42,7 +42,7 @@
 
 ## 更新
 
-打开「设置 → 更新」，点击「检测升级」查看派板官方版本。Windows 安装版发现新版后可点「一键升级」，安装包待正式发布。源码开发时请先备份 `data/` 并核对本地改动，更新此仓库的源码后重启面板。
+打开「设置 → 更新」，点击「检测升级」查看派板官方版本。Windows 安装版发现新版后可点「一键升级」。源码开发时请先备份 `data/` 并核对本地改动，更新此仓库的源码后重启面板。
 
 如果二次开发并维护自己的发行版，请在 [release-manifest.mjs](release-manifest.mjs) 中配置自己的发行仓库，在 [product-release.json](product-release.json) 中配置版本与发行公钥，并用同一公钥构建安装包。
 

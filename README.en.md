@@ -17,9 +17,9 @@ A local task board for Codex on Windows. Assign tasks to the appropriate Codex c
 
 ## Quick start
 
-### Windows installer (pending release)
+### Windows installer
 
-Once released, download the Windows x64 installer from [GitHub Releases](https://github.com/lei0620/paiban/releases). Select Open Paiban on the final setup screen, or open Paiban from the Windows Start menu later. The installer includes the required runtimes. Everyday use requires no terminal commands.
+Download the Windows x64 installer from [GitHub Releases](https://github.com/lei0620/paiban/releases/latest) and double-click it. Select Open Paiban on the final setup screen, or open Paiban from the Windows Start menu later. The installer includes the required runtimes. Everyday use requires no terminal commands.
 
 On first launch, select Start setup and connect to the signed-in Codex desktop app using a chat link or ID. To open a board inside a Codex chat, select 接入 Codex 白板 (Connect Codex board) from the Windows Start menu and reopen Codex when prompted. Set up a private repository only if you need cross-device sync.
 
@@ -42,7 +42,7 @@ You need Windows, Node.js 22.13 or later, PowerShell 7, and a running Codex desk
 
 ## Updates
 
-Open Settings → Updates and select Check for upgrades to check the official Paiban release. The installed Windows app can apply an available update in one click. The installer is pending release. For source development, back up `data/` and review local changes before updating this checkout and restarting Paiban.
+Open Settings → Updates and select Check for upgrades to check the official Paiban release. The installed Windows app can apply an available update in one click. For source development, back up `data/` and review local changes before updating this checkout and restarting Paiban.
 
 If you maintain your own distribution, set your release repository in [release-manifest.mjs](release-manifest.mjs), configure the version and public signing key in [product-release.json](product-release.json), and use the same public key when building the installer.
 

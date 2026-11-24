@@ -341,7 +341,8 @@ let loadingVersion=-1,readGeneration=0,refreshSuspended=true,refreshTimer=null;
 function scheduleRefresh(){
   clearTimeout(refreshTimer);refreshTimer=null;
   if(refreshSuspended||document.hidden)return;
-  refreshTimer=setTimeout(()=>{refreshTimer=null;if(refreshSuspended||document.hidden)return;void load();scheduleRefresh();},4000);
+  const watchingCurrentThread=state.jobs.some(job=>job.deliveryKind==='current-thread'&&['queued','sending','submitted','running'].includes(job.status));
+  refreshTimer=setTimeout(()=>{refreshTimer=null;if(refreshSuspended||document.hidden)return;void load().finally(scheduleRefresh);},watchingCurrentThread?2000:4000);
 }
 function pauseRefresh(){
   if(refreshSuspended)return;
@@ -470,6 +471,7 @@ async function submitEditor(e,execute=false,currentThread=false){
     delete drafts[key];delete drafts['composer:'+key];delete drafts[receiptKey];delete drafts['editor:'+key+':create'];delete drafts['editor:'+key+':execute:'+result.saved.id];saveStore(draftKey(),drafts);$('editor').close();
     if(currentThreadId&&result.scheduled)selectLane('running',true);
     await load();
+    if(currentThreadId&&result.scheduled)scheduleRefresh();
   }catch(error){$('editorError').textContent=(drafts[receiptKey]?.savePending?'保存未完成或回执待核对，内容已保留。':drafts[receiptKey]?.id?'卡片已保存。':'')+error.message+(drafts[receiptKey]?.attempted?'；不会自动重发，请先核对卡片执行状态。':'');$('taskEditorScroll').scrollTop=$('taskEditorScroll').scrollHeight;}
   finally{pending.delete('editor');$('taskForm').removeAttribute('aria-busy');$('taskEditorScroll').inert=false;for(const b of buttons)b.disabled=false;render();}
 };

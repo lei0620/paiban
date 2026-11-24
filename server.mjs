@@ -5,7 +5,7 @@ import {hasPortableWorkflow} from './workflow-sync.mjs';
 import {CatalogHealth,catalogUnverified} from './catalog-health.mjs';
 import {presentSource,readSourceImage,presentTask} from './source-display.mjs';
 import {InitialDispatcher} from './initial-dispatch.mjs';
-import {dispatchQueueJobs,pendingInitialDispatches,CURRENT_THREAD_DELIVERY,trackedCurrentThread,steeringCurrentThread} from './dispatch-state.mjs';
+import {dispatchQueueJobs,pendingInitialDispatches,CURRENT_THREAD_DELIVERY,CURRENT_THREAD_TASK_ID_VERSION,trackedCurrentThread,steeringCurrentThread,taskIdHeader} from './dispatch-state.mjs';
 import {inspectDelivery,deliveryPreview,reconcileDelivery} from './delivery-reconcile.mjs';
 import {inspectUpgrade,upgradeRepository,githubUpgradePrompt} from './github-upgrade.mjs';
 import {ensureProjectSyncTask} from './project-sync.mjs';
@@ -290,6 +290,7 @@ async function lightTick(){
   if(restarting||closing)return;
   if(!projectCatalog.pending)track(projectCatalog.refresh()).catch(()=>{});
   const now=refreshNow();
+  if(now-lastCurrentThreadResultCheckAt>=2000&&state.jobs.some(activeCurrentThreadResult))void reconcileExecutions({currentThreadOnly:true});
   if(now>=nextHeartbeatAt){nextHeartbeatAt=now+30000;try{await connectBridge({probe:true});}catch{return;}}
   if(now>=nextMetadataAt){nextMetadataAt=now+60000;await refreshMetadata();}
   // A failed read recovers even with no queued work. Healthy idle sessions
@@ -759,14 +760,18 @@ async function recoverIdleUncertain(snapshot){
     return released;
   }catch(error){diagnostics.record({phase:'uncertain-recovery',projectId:job.projectId,threadId:job.threadId,error});return false;}
 }
-function reconcileExecutions(){
+const activeCurrentThreadResult=job=>trackedCurrentThread(job)&&['running','submitted'].includes(job.status);
+let lastCurrentThreadResultCheckAt=-Infinity;
+function reconcileExecutions({currentThreadOnly=false}={}){
   if(reconcilingExecutions)return reconcilingExecutions;
+  if(state.jobs.some(activeCurrentThreadResult))lastCurrentThreadResultCheckAt=refreshNow();
   reconcilingExecutions=track((async()=>{assertWritable();
-    await directSync.reconcile();
+    if(!currentThreadOnly)await directSync.reconcile();
     const unresolved=[];
     for(const id of uncertainRecoveryPolls.keys())if(repository.getJob(id)?.value.status!=='uncertain')uncertainRecoveryPolls.delete(id);
-    for(const row of repository.queryQueue(['running','submitted','uncertain']).items){
+    for(const row of repository.queryQueue(currentThreadOnly?['running','submitted']:['running','submitted','uncertain']).items){
       const snapshot=repository.getJob(row.id),j=snapshot.value;let patch,matched=false;
+      if(currentThreadOnly&&!activeCurrentThreadResult(j))continue;
       try{
         const found=await readExecutionTurn(j),turn=found.turn;
         if(!turn){patch={message:found.reason};if(['submitted','running'].includes(j.status)&&Date.now()-Date.parse(j.lastSeenAt??j.sentAt??j.createdAt)>120000)Object.assign(patch,{status:'uncertain',error:'尚未可靠关联本轮，请人工核对；不会自动重发'});}
@@ -787,6 +792,7 @@ function reconcileExecutions(){
         try{await refreshMetadata();await ensureThreadNaming(j.threadId,'',true);}catch{/* 标题仍可在项目设置中手动修正，不影响任务结果 */}
       }
     }
+    if(currentThreadOnly)return;
     await reconcileAdoptions();
     await autoBindUploadedSource();
     // Exact original results have priority. One due idle check per pass keeps
@@ -839,15 +845,16 @@ async function runTick(){
         }else if(reason&&!j.connectionTest){await record({message:reason});continue;}
         if(project?.sourcePath)try{await verifySourceBinding(project,state.workspace.mappings[j.projectId],{inspect:options.inspectSourceRepository});}catch(error){await record({message:error.message});continue;}
         if(j.operation==='project-adopt')try{await (options.inspectTransferDirectory??inspectTransferDirectory)(project,j.adoption);}catch(error){await record({message:error.message});continue;}
-        j.baseline=before.turns?.[0]?.id;j.correlationToken='panel-run-'+randomUUID();j.sentAt=new Date().toISOString();j.error='';
+        const useTaskId=trackedCurrentThread(j)&&j.currentThreadMode==='queue'&&!!j.taskId;
+        j.baseline=before.turns?.[0]?.id;j.correlationToken=useTaskId?null:'panel-run-'+randomUUID();j.sentAt=new Date().toISOString();j.error='';
         // 业务发送已核对默认模型与目标实际系列；登记本次新鲜目录快照。
         const threadView=modelView(j.threadId)??catalog.threads.find(t=>t.id===j.threadId);
         if(!trackedCurrentThread(j)&&!(j.connectionTest&&!j.taskId)&&!executor.compatible(j.threadId,currentModel())){await record({message:'目标实际模型变化，等待重新核对'});continue;}
         Object.assign(j,threadModelRecord(threadView));
         // 关联标识只出现一次：任务派发由 developmentPrompt 在任务标识后写入，其余入口在此写入。
-        const marker='[面板轮次标识：'+j.correlationToken+'，仅用于结果关联]\n';
+        const marker=useTaskId?taskIdHeader(j.taskId):'[面板轮次标识：'+j.correlationToken+'，仅用于结果关联]\n';
         const meta='[面板派发] 项目：'+(j.project??'')+' · 模型：'+(j.modelLabel||threadView?.modelLabel||'模型未确认')+'\n\n';
-        const dispatchText=(trackedCurrentThread(j)?marker+j.prompt:j.operation==='github-upgrade'?marker+meta+githubUpgradePrompt(project,j.upgrade):j.operation==='workflow-init'?marker+meta+initializationPrompt(project):j.operation==='project-adopt'?marker+meta+j.prompt:j.connectionTest?marker+meta+j.prompt:developmentPrompt({...j,prompt:j.routedPrompt??j.prompt},state.workspace.mappings[j.projectId],state.workspace.deviceLabel))+sourceContext(project)+filePrompt;if((!j.operation||j.operation==='handoff-summary')&&!j.connectionTest)j.dispatchVersion=2;if(!Object.hasOwn(j,'dispatchPrompt'))j.dispatchPrompt=dispatchText;j.routedDispatchPrompt=dispatchText;j.status='sending';j.message='正在交给桌面端；如有审批，请在 Codex 处理';
+        const dispatchText=(trackedCurrentThread(j)?marker+j.prompt:j.operation==='github-upgrade'?marker+meta+githubUpgradePrompt(project,j.upgrade):j.operation==='workflow-init'?marker+meta+initializationPrompt(project):j.operation==='project-adopt'?marker+meta+j.prompt:j.connectionTest?marker+meta+j.prompt:developmentPrompt({...j,prompt:j.routedPrompt??j.prompt},state.workspace.mappings[j.projectId],state.workspace.deviceLabel))+sourceContext(project)+filePrompt;if((!j.operation||j.operation==='handoff-summary')&&!j.connectionTest)j.dispatchVersion=useTaskId?CURRENT_THREAD_TASK_ID_VERSION:2;if(!Object.hasOwn(j,'dispatchPrompt'))j.dispatchPrompt=dispatchText;j.routedDispatchPrompt=dispatchText;j.status='sending';j.message='正在交给桌面端；如有审批，请在 Codex 处理';
         dispatching=true;dispatchTarget=sourceAwareJob(state,j);
         try{
         await mutate(draft=>{

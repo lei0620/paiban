@@ -43,6 +43,17 @@ const composerSignature=input=>createHash('sha256').update(JSON.stringify({proje
 const canonicalSubmitSignature=input=>composerSignature({...input,submit:true,description:String(input.description??'').trim().replaceAll('\r\n','\n')});
 // The helper records partial only before it tries the normal Send button.
 const definitelyNotSubmitted=result=>(result.status==='partial'&&result.text==='filled')||(result.status==='failed'&&result.retrySafe===true&&result.text==='not-filled'&&result.attachmentsAdded.length===0);
+const legacyStopsBeforeSubmit=new Set([
+  '当前桌面窗口已变化，已停止填入',
+  '无法唯一核对当前聊天与侧栏，请在所属聊天打开侧栏后重试'
+]);
+
+function blocksUnrelatedSend(record){
+  if(record.canonicalSubmitSignature)return false;
+  const {status,text,attachmentsAdded,message}=record.result;
+  // These exact legacy messages can only come from the window checks before Send.
+  return !(status==='uncertain'&&text==='uncertain'&&attachmentsAdded.length===0&&legacyStopsBeforeSubmit.has(message));
+}
 
 // Persist the reservation before touching the desktop. Lost receipts and restarts
 // can only replay the result, never invoke the helper a second time.
@@ -68,9 +79,12 @@ export class ComposerFiller{
   hasUnconfirmedSubmit(input,{includeUnscopedLegacy=false}={}){
     if(includeUnscopedLegacy&&this.fault)return true;
     const signature=composerSignature({...input,submit:true}),canonical=canonicalSubmitSignature(input);
-    // Older records only stored an exact hash. No target or whitespace-normalized
-    // content can be inferred from it once the original editor draft is gone.
-    return [...this.receipts.values()].some(r=>['partial','uncertain'].includes(r.result.status)&&!definitelyNotSubmitted(r.result)&&(r.signature===signature||r.canonicalSubmitSignature===canonical||includeUnscopedLegacy&&!r.canonicalSubmitSignature));
+    // Keep matching receipts protected. An unscoped legacy receipt also blocks
+    // other sends unless its helper result proves it stopped before submission.
+    return [...this.receipts.values()].some(record=>{
+      if(!['partial','uncertain'].includes(record.result.status)||definitelyNotSubmitted(record.result))return false;
+      return record.signature===signature||record.canonicalSubmitSignature===canonical||includeUnscopedLegacy&&blocksUnrelatedSend(record);
+    });
   }
   fill(id,input){
     if(this.fault)reject(this.fault);

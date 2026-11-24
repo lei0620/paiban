@@ -1,10 +1,16 @@
 // Local delivery evidence is deliberately separate from visible task text.
 export const CURRENT_THREAD_DELIVERY='current-thread';
+export const CURRENT_THREAD_TASK_ID_VERSION=3;
 export const trackedCurrentThread=job=>job?.deliveryKind===CURRENT_THREAD_DELIVERY&&['queue','steer'].includes(job.currentThreadMode);
 export const steeringCurrentThread=job=>trackedCurrentThread(job)&&job.currentThreadMode==='steer';
+export const taskIdCurrentThread=job=>trackedCurrentThread(job)&&job.currentThreadMode==='queue'&&job.dispatchVersion===CURRENT_THREAD_TASK_ID_VERSION;
+export const taskIdHeader=id=>'[任务 ID：'+id+']\n';
 export function steeringInputIndex(turn,job){
   const prompt=job.routedDispatchPrompt??job.dispatchPrompt;
-  if(!job.correlationToken||typeof prompt!=='string'||!prompt.includes(job.correlationToken))return -1;
+  if(typeof prompt!=='string')return -1;
+  if(taskIdCurrentThread(job)){
+    if(!job.taskId||!sameDispatchText(prompt.slice(0,prompt.indexOf('\n')+1),taskIdHeader(job.taskId)))return -1;
+  }else if(!job.correlationToken||!prompt.includes(job.correlationToken))return -1;
   const indices=[];
   for(const [index,item] of (turn.items??[]).entries()){
     if(!['userMessage','steeringUserMessage'].includes(item.type)&&!(item.type==='functionCallOutput'&&/^(?:.*__)?send_message_to_thread$/.test(item.name??'')))continue;
@@ -30,5 +36,5 @@ export function dispatchQueueJobs(state){
   })];
 }
 export function ownsDispatchedSource(state,source){
-  return state.jobs.some(j=>j.dispatchVersion===2&&j.projectId===source.projectId&&j.threadId===source.threadId&&j.turnId===source.turnId&&sameDispatchText(j.routedDispatchPrompt??j.dispatchPrompt,source.text));
+  return state.jobs.some(j=>(j.dispatchVersion===2||taskIdCurrentThread(j))&&j.projectId===source.projectId&&j.threadId===source.threadId&&j.turnId===source.turnId&&sameDispatchText(j.routedDispatchPrompt??j.dispatchPrompt,source.text));
 }
