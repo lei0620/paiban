@@ -56,7 +56,9 @@ Noncommercial use is free. You are welcome to modify the project and share origi
 
 ## Support development
 
-If Paiban helps you, you can support its maintenance with an optional Alipay donation of any amount. Stars and issue reports are welcome too.
+**Buy me a coffee**
+
+If Paiban saves you from switching between Codex chats and helps you keep tasks and replies together, consider buying me a coffee via Alipay. Your support helps me fix bugs, simplify setup, and maintain one-click updates for Windows. Any amount is welcome. Thank you for supporting Paiban.
 
 <a href="public/support-alipay.jpg"><img src="public/support-alipay.jpg" width="208" alt="Alipay donation QR code. Open the full-size image."></a>
 

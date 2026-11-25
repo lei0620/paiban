@@ -20,15 +20,15 @@
 <dialog id="detail" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle">任务详情</h2><div class="detail-heading-actions"><button id="deleteTask" type="button" title="删除卡片，保留执行记录">删除</button><button data-close="detail" aria-label="关闭任务详情">×</button></div></div><div id="detailScroll" tabindex="0" role="region" aria-label="任务详情内容"><div id="detailContent"></div><p id="reviewBlockReason" class="hint" role="status" hidden></p><section id="reviewSection" hidden><h3>处理本轮结果</h3><label for="reviewNote">处理反馈</label><textarea id="reviewNote" maxlength="10000" rows="3" placeholder="填写本次回答或处理意见；立即处理会发送，稍后处理只保存…"></textarea><label id="resolveLabel" class="check" hidden><input id="resolveConfirm" type="checkbox"><span id="resolveText">已核对原对话，确认不会再产生本轮执行</span></label><p id="reviewHint" class="hint"></p></section><div id="detailExtras"></div></div><div id="reviewActions" class="review-actions" role="group" aria-label="本轮审阅操作" hidden><p id="reviewError" class="error" role="alert"></p><div class="review-recovery-actions" hidden><button id="manualReview" type="button">核对后通过</button><button id="restoreReviewThread" type="button" hidden>恢复原对话</button><button id="checkReviewState" type="button">重新核对</button></div><p id="reviewRecoveryHint" class="hint" role="status" hidden></p><div class="dialog-actions"><button id="openReviewChat" type="button" aria-label="定位到本轮聊天" title="打开本轮执行所在的原对话" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 4H5a2 2 0 0 0-2 2v11l4-3h10a2 2 0 0 0 2-2v-1M15 3h6v6M13 11l8-8"/></svg></button><button id="returnReview" type="button" aria-controls="reviewSection">稍后处理</button><button id="retryReview">立即处理</button><button id="approveTask" class="primary">通过</button></div></div></dialog><template id="productSupportTemplate">
   <section id="productSupport" class="product-support" aria-labelledby="productSupportHeading">
     <div>
-      <h3 id="productSupportHeading">联系与赞助</h3>
-      <p>自愿赞助，金额随心。</p>
+      <h3 id="productSupportHeading">请我喝杯咖啡</h3>
+      <p>如果派板帮你少切窗口、理清任务，欢迎支持我继续修复问题、维护 Windows 更新。</p>
       <p class="support-contact">维护者微信 <code id="supportWechat">Mr_Lei0620</code></p>
       <button id="copySupportWechat" type="button">复制微信号</button>
       <p id="supportCopyStatus" role="status"></p>
     </div>
     <figure>
       <div class="product-support-code"><img src="/support-alipay.jpg" width="1103" height="1654" alt="支付宝赞助收款码" loading="lazy"></div>
-      <figcaption>支付宝扫一扫</figcaption>
+      <figcaption>支付宝 · 随心赞助</figcaption>
     </figure>
   </section>
 </template>
