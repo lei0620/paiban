@@ -146,9 +146,9 @@ public static class ComposerNative {
         if($matches.Count -ne 1) { throw '无法唯一核对当前聊天与侧栏，请在所属聊天打开侧栏后重试' }
         return $matches[0]
     }
-    function Assert-Foreground($target) {
+    function Assert-Foreground($target,[switch]$MainWindowOnly) {
         $foreground=[ComposerNative]::GetForegroundWindow()
-        if($foreground -ne $target.window -and [ComposerNative]::GetAncestor($foreground,3) -ne $target.window) { throw '当前桌面窗口已变化，已停止填入' }
+        if($foreground -ne $target.window -and ($MainWindowOnly -or [ComposerNative]::GetAncestor($foreground,3) -ne $target.window)) { throw '当前桌面窗口已变化，已停止填入' }
     }
     function Find-Composer($target) {
         $editCondition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
@@ -170,6 +170,40 @@ public static class ComposerNative {
         $fresh=Find-Target
         if($fresh.window -ne $target.window) { throw '聊天窗口已变化，已停止填入' }
         return Find-Composer $fresh
+    }
+    function Test-ComposerFocus($composer) {
+        try {
+            $focused=[System.Windows.Automation.AutomationElement]::FocusedElement
+            $composerId=$composer.GetRuntimeId() -join ','
+            return $null -ne $focused -and $composerId -ne '' -and ($focused.GetRuntimeId() -join ',') -ceq $composerId
+        } catch [System.Windows.Automation.ElementNotAvailableException] {
+            return $false
+        }
+    }
+    function Focus-Composer($target,[string]$beforeText) {
+        # The sidebar and the main editor can be in different Chromium views.
+        # SetFocus may return before the desktop reports the editor as focused.
+        for($attempt=0;$attempt -lt 2;$attempt++) {
+            $composer=Assert-Target $target
+            if($beforeText -cne (Composer-Text $composer)) { throw '输入内容已变化，尚未填入' }
+            Assert-Foreground $target -MainWindowOnly
+            if(-not (Test-ComposerFocus $composer)) {
+                try { $composer.SetFocus() }
+                catch [System.Windows.Automation.ElementNotAvailableException] { continue }
+            }
+            for($check=0;$check -le 8;$check++) {
+                Assert-Foreground $target -MainWindowOnly
+                if(Test-ComposerFocus $composer) {
+                    $current=Assert-Target $target
+                    if($beforeText -cne (Composer-Text $current)) { throw '输入内容已变化，尚未填入' }
+                    Assert-Foreground $target -MainWindowOnly
+                    if(Test-ComposerFocus $current) { return $current }
+                    break
+                }
+                if($check -lt 8) { Start-Sleep -Milliseconds 40 }
+            }
+        }
+        throw '未能聚焦原对话的主聊天输入框，尚未填入'
     }
     function Invoke-Control($element) {
         if(-not $element.Current.IsEnabled -or $element.Current.IsOffscreen) { throw '附件操作暂不可用' }
@@ -311,18 +345,20 @@ public static class ComposerNative {
     if($Probe) {
         $result.status='ready';$result.message='已核对当前侧栏、对话标题及主输入框；未操作输入或附件'
     } else {
+        $composer=Focus-Composer $target $beforeText
+        if($beforeText.Length -gt 0) {
+            Assert-Foreground $target -MainWindowOnly
+            if(-not (Test-ComposerFocus $composer)) { throw '主聊天输入框已失去焦点，尚未填入' }
+            [ComposerNative]::Chord(0x11,0x23)
+        }
         $oldClipboard=[System.Windows.Forms.Clipboard]::GetDataObject()
         $suffix=$(if($beforeText.Length -gt 0){"`r`n"}else{''})+$inputData.description
         [System.Windows.Forms.Clipboard]::SetText($suffix)
         $clipboardChanged=$true;$clipboardSequence=[ComposerNative]::GetClipboardSequenceNumber()
         Add-ComposerTimingMark 'clipboard-ready'
-        $composer=Assert-Target $target
-        $composer.SetFocus()
         if($beforeText -cne (Composer-Text $composer)) { throw '输入内容已变化，尚未填入' }
-        [ComposerNative]::Chord(0x11,0x23)
-        Assert-Foreground $target
-        $focused=[System.Windows.Automation.AutomationElement]::FocusedElement
-        if(($focused.GetRuntimeId() -join ',') -ne ($composer.GetRuntimeId() -join ',')) { throw '焦点不在主聊天输入框，尚未填入' }
+        Assert-Foreground $target -MainWindowOnly
+        if(-not (Test-ComposerFocus $composer)) { throw '主聊天输入框已失去焦点，尚未填入' }
         if([ComposerNative]::GetClipboardSequenceNumber() -ne $clipboardSequence) { throw '剪贴板内容已变化，尚未填入' }
         # Paste only; Submit uses the normal button later, never a keyboard override.
         $result.retrySafe=$false;$result.text='uncertain';$result.status='uncertain'
