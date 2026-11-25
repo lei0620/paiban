@@ -56,14 +56,11 @@ Noncommercial use is free. You are welcome to modify the project and share origi
 
 ## Support development
 
-If the panel helps you, consider starring the repository, reporting an issue, or sharing how you use it. You can also support independent development by scanning the Alipay code. Sponsorship is voluntary and separate from commercial licensing.
+If Paiban helps you, you can support its maintenance with an optional Alipay donation of any amount. Stars and issue reports are welcome too.
 
-<details>
-<summary>Alipay donation QR code</summary>
+<a href="public/support-alipay.jpg"><img src="public/support-alipay.jpg" width="208" alt="Alipay donation QR code. Open the full-size image."></a>
 
-<img src="public/support-alipay.jpg" width="240" alt="Alipay donation QR code">
-
-</details>
+You can reach the maintainer on WeChat at `Mr_Lei0620`. See the [license](#license) for commercial use.
 
 ## Development
 

@@ -118,13 +118,27 @@ export function initHub(context){
     <dialog id="legacyResolve"><form id="legacyResolveForm"><h2>核对旧未决记录</h2><input name="id" type="hidden"><label for="legacyNote">核对说明</label><textarea id="legacyNote" name="note" required rows="3"></textarea><label class="check"><input type="checkbox" name="confirmed" required>已检查原对话，确认不会继续执行本轮</label><p class="hint">服务还会验证原对话属于本项目且已空闲。释放不代表成功，不会自动重发。</p><button type="button" id="closeLegacy">取消</button><button class="primary">核对后释放</button></form></dialog>`;
   $('notice').before(host);
   $('workspaceAdvanced').before($('productUpdate'));
-  $('productUpdate').append($('productSupportTemplate').content.cloneNode(true));
+  $('productUpdate').before($('productSupportTemplate').content.cloneNode(true));
+  $('copySupportWechat').onclick=async()=>{
+    const wechat=$('supportWechat'),status=$('supportCopyStatus');
+    try{
+      await navigator.clipboard.writeText(wechat.textContent);
+      status.textContent='微信号已复制。';
+    }catch{
+      const selection=window.getSelection();
+      if(selection){
+        const range=document.createRange();range.selectNodeContents(wechat);
+        selection.removeAllRanges();selection.addRange(range);
+        status.textContent='微信号已选中，按 Ctrl+C 复制。';
+      }else status.textContent='请手动复制微信号。';
+    }
+  };
   if(context.diagnosticsSupported)void import('./diagnostics.js').then(module=>{diagnosticUI=module;module.initDiagnostics(context);if(current?.state)module.updateDiagnostics(current.state,current.projectId);}).catch(error=>api.notice(error.message,true));
   const topNav=host.querySelector('.hub-nav'),tools=topNav.querySelector('.workspace-tools');document.querySelector('.app-bar .brand').after(topNav);document.querySelector('.app-bar').append(tools);$('workspaceToggle').append($('connection'));tools.append(document.querySelector('.project-sync-shortcut'));const refresh=$('refresh');refresh.type='button';refresh.className='connection-refresh';refresh.setAttribute('aria-label','刷新连接');refresh.title='重新读取项目、对话和连接状态';refresh.append(document.createTextNode('刷新连接'));$('findInstances').before(refresh);document.querySelector('.connection-wrap').remove();
   // Move the existing controls, preserving their handlers and drafts.
   const settingsBody=$('workspaceConfig').querySelector('.hub-settings');
   settingsBody.prepend($('settings'));settingsBody.insertAdjacentHTML('afterbegin',setupGuideMarkup());$('settings').open=true;
-  const settingsSections={general:['setupGuide','deviceForm','workspaceAdvanced'],project:['settings'],sync:['syncForm'],storage:['storageSettings'],updates:['productUpdate']};
+  const settingsSections={general:['setupGuide','deviceForm','workspaceAdvanced'],project:['settings'],sync:['syncForm'],storage:['storageSettings'],updates:['productSupport','productUpdate']};
   for(const [key,ids] of Object.entries(settingsSections))for(const id of ids)$(id).dataset.settingsSection=key;
   const settingsTabs=$('workspaceSettingsNav').querySelectorAll('[data-settings-target]');
   let settingsSection='general';

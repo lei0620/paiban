@@ -56,14 +56,11 @@
 
 ## 支持开发
 
-如果这个工具帮到了你，欢迎给仓库点 Star、反馈问题或分享使用经验。也可以用支付宝扫码，自愿支持个人维护。赞助与商业授权分别办理。
+如果派板帮到了你，欢迎用支付宝扫码，自愿支持个人维护。金额随心，也欢迎给仓库点 Star 或反馈问题。
 
-<details>
-<summary>支付宝收款码</summary>
+<a href="public/support-alipay.jpg"><img src="public/support-alipay.jpg" width="208" alt="支付宝赞助收款码，点击查看原图"></a>
 
-<img src="public/support-alipay.jpg" width="240" alt="支付宝赞助收款码">
-
-</details>
+维护者微信 `Mr_Lei0620`。商业使用请按[使用授权](#使用授权)联系。
 
 ## 开发
 
