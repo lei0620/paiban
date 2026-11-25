@@ -1,15 +1,4 @@
 param([switch]$Probe,[switch]$Submit)
-function Get-SendProbeResult([bool]$present,[bool]$enabled,[bool]$supportsInvoke,[string]$editorText,[bool]$stopping) {
-    if($present -and $enabled) {
-        if($supportsInvoke){return @{status='pass';reason='available'}}
-        return @{status='fail';reason='unsupported'}
-    }
-    if($stopping){return @{status='pending';reason='running'}}
-    if($editorText.Length -eq 0){return @{status='pending';reason='empty'}}
-    if([string]::IsNullOrWhiteSpace($editorText)){return @{status='pending';reason='whitespace'}}
-    if($present){return @{status='pending';reason='disabled'}}
-    return @{status='fail';reason='missing'}
-}
 $composerTimingClock=$null;$composerTimingStartedAt=$null;$script:composerTiming=$null
 try {$composerTimingClock=[Diagnostics.Stopwatch]::StartNew();$composerTimingStartedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()}catch{}
 function Start-ComposerTiming($enabled,$clock,$startedAt) {
@@ -40,8 +29,7 @@ $clipboardChanged=$false; $clipboardSequence=0; $oldClipboard=$null
 try {
     $inputData = [Console]::In.ReadToEnd() | ConvertFrom-Json
     Start-ComposerTiming $inputData.timing $composerTimingClock $composerTimingStartedAt
-    $inspectControls=$Probe -and $inputData.inspectControls -eq $true
-    if (-not $inputData.threadTitle -or (-not $inspectControls -and -not $inputData.description)) { throw '窗口上下文缺失，尚未填入' }
+    if (-not $inputData.threadTitle -or -not $inputData.description) { throw '窗口上下文缺失，尚未填入' }
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
     Add-Type -AssemblyName System.Windows.Forms
@@ -273,7 +261,7 @@ public static class ComposerNative {
             if(@($elements | Where-Object {$_.Current.Name -eq $file.name}).Count -lt 1) { throw '本次附件无法完整核对，尚未发送' }
         }
     }
-    function Find-SubmitButton($composer,$ProbeScope) {
+    function Find-SubmitButton($composer) {
         $parent=$walker.GetParent($composer)
         while($parent -and $parent.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) {
             $elements=Elements-Of $parent
@@ -282,49 +270,15 @@ public static class ComposerNative {
             $buttons=@($elements | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $_.Current.Name -in @('Send','Queue','Steer','发送','排队','引导') -and -not $_.Current.IsOffscreen})
             if($buttons.Count -gt 1) { throw '正常发送按钮不唯一，尚未发送' }
             if($buttons.Count -eq 1) {
-                if(!$ProbeScope -and -not $buttons[0].Current.IsEnabled) { throw '正常发送按钮暂不可用，尚未发送' }
+                if(-not $buttons[0].Current.IsEnabled) { throw '正常发送按钮暂不可用，尚未发送' }
                 return $buttons[0]
             }
-            if($ProbeScope -and ($parent.GetRuntimeId() -join ',') -eq ($ProbeScope.GetRuntimeId() -join ',')){return}
             $parent=$walker.GetParent($parent)
         }
         throw '未找到唯一正常发送按钮，正文留在输入框中，请核对'
     }
     $target=Find-Target
     Add-ComposerTimingMark 'target-found'
-    if($inspectControls) {
-        $composer=Find-Composer $target
-        $beforeText=Composer-Text $composer
-        if($null -eq $beforeText){throw '无法只读核对主聊天输入框'}
-        $controls=@{editor='pass';attachment='fail';send='fail';sendReason='scope'}
-        try {
-            $attachmentButton=Find-AttachmentButton $composer
-            $pattern=$null
-            if($attachmentButton.Current.IsEnabled -and (
-                $attachmentButton.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$pattern) -or
-                $attachmentButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern))) {$controls.attachment='pass'}
-        } catch {}
-        try {
-            $sendScope=Find-ComposerScope $composer
-            $sendButton=Find-SubmitButton $composer $sendScope
-            $stopping=@(Elements-Of $sendScope | Where-Object {
-                $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
-                $_.Current.Name -in @('停止','Stop') -and $_.Current.IsEnabled -and -not $_.Current.IsOffscreen
-            }).Count -eq 1
-            $pattern=$null
-            $enabled=[bool]($sendButton -and $sendButton.Current.IsEnabled)
-            $supportsInvoke=$enabled -and $sendButton.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)
-            $send=Get-SendProbeResult ([bool]$sendButton) $enabled $supportsInvoke $beforeText $stopping
-            $controls.send=$send.status
-            $controls.sendReason=$send.reason
-        } catch {}
-        $fresh=Find-Target
-        if($fresh.window -ne $target.window -or ((Find-Composer $fresh).GetRuntimeId() -join ',') -ne ($composer.GetRuntimeId() -join ',')){throw '检查期间窗口或输入框变化'}
-        $result.status='ready'
-        $result.controls=$controls
-        $result | ConvertTo-Json -Depth 4 -Compress
-        return
-    }
     if([ComposerNative]::GetForegroundWindow() -ne $target.window) { throw '请保持所属聊天桌面窗口在前台，并关闭其他弹窗后重试' }
     Assert-Foreground $target
     $composer=Find-Composer $target

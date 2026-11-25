@@ -899,19 +899,6 @@ body.workspace-settings-open main > footer { display:none !important; }
 .diagnostic-rows { max-height:60vh;overflow:auto;overflow-wrap:anywhere; }
 .diagnostic-row { border-top:1px solid var(--line,#e5e7eb);padding:12px 0; }
 .diagnostic-row p { margin:6px 0; }
-#desktopCheckDialog { width:min(520px,calc(100vw - 24px));max-height:90vh; }
-.desktop-check-rows { list-style:none;margin:0;padding:0; }
-.desktop-check-rows li { border-top:1px solid var(--line,#e5e7eb);padding:9px 0; }
-.desktop-check-rows li>div { display:flex;align-items:baseline;justify-content:space-between;gap:8px; }
-.desktop-check-rows li>div span { flex:none;font-size:12px; }
-.desktop-check-rows p { margin:3px 0 0;overflow-wrap:anywhere; }
-.desktop-check-rows [data-status=pass] { color:#316849; }
-.desktop-check-rows [data-status=fail] { color:#a13938; }
-.desktop-check-rows [data-status=pending] { color:#78591e; }
-.desktop-check-notice { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:6px 9px;border-radius:10px;background:#fff5d8;color:#674c18;font-size:12px; }
-.desktop-check-notice[hidden] { display:none; }
-.desktop-check-notice button { flex:none;padding:4px 8px; }
-#desktopCheckOpen { margin-inline-start:6px; }
 #workspaceConfig h3 { margin:0 0 12px;font-size:14px; }
 #workspaceConfig label:not(.check) { display:block;margin-top:10px; }
 #workspaceConfig input:not([type=checkbox]),

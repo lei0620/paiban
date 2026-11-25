@@ -12,7 +12,7 @@ if(!bootstrapState?.automation||!bootstrapState?.capture||!Object.hasOwn(bootstr
   document.getElementById('refresh').onclick=()=>location.reload();
 }else{
 const {groupRounds,roundIdOf,executionSuggestion}=await import('./rounds.js');
-const {initHub,renderHub,observeDesktopContext}=await import('./hub.js');
+const {initHub,renderHub}=await import('./hub.js');
 
 const {initAutomation,updateAutomation,selectionControl,isSelected,selectionKey,selectedTaskIds,executionEditor,executionValues,scheduledMessage,scheduledAction,executionManagement,taskLane,scheduledTaskState,editableTask}=await import('./automation-ui.js');
 const {initLineage,updateLineage,resetTaskView,readableSourceTask,readableSourceText,showTaskSourceImages,chainHint,chainBlock}=await import('./lineage.js');
@@ -63,7 +63,7 @@ const follower=canFollowProject?new ProjectFollower({
   allowPreview:false,
   enabled:()=>followsProject()&&state.service?.desktopContextSupported===true&&!document.hidden,
   current:()=>location.href,projects:()=>state.projects,
-  read:async pageUrl=>{const response=await fetch('/api/view/context?'+new URLSearchParams({pageUrl,documentId}),{headers:{'X-Panel-Token':state.token},signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('当前项目核对暂不可用');const context=await response.json();observeDesktopContext(context);return context;},
+  read:async pageUrl=>{const response=await fetch('/api/view/context?'+new URLSearchParams({pageUrl,documentId}),{headers:{'X-Panel-Token':state.token},signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error('当前项目核对暂不可用');return response.json();},
   canApply:()=>pending.size===0&&!uploading&&!$('referenceEditor')?.open&&!$('referenceTagManager')?.open&&!$('taskGroupDialog-references')?.open,
   block:blockContext,
   apply:url=>{if($('editor').open)persistEditor();saveStore(draftKey(),drafts);if(url.searchParams.get('projectId')===projectId){const thread=url.searchParams.get('threadId');if(thread)query.set('threadId',thread);else query.delete('threadId');projectAddress=activeViewAddress=url.href;history.replaceState({...history.state,projectHref:projectAddress},'',url);return false;}navigateView(url,true,true);return false;}

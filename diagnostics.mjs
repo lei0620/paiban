@@ -20,7 +20,7 @@ export function diagnosticText(value){return String(value??'').slice(0,8000)
   .replace(/\b(?:sk-[A-Za-z0-9_-]+|[A-Za-z0-9_=-]{48,})\b/g,'[已隐去]')
   .replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,600);}
 
-const reasons={DESKTOP_CHECK_FAILED:'Codex 兼容性自检失败，请查看对应检查项。',THREAD_READ_TOO_LARGE:'对话日志超过64 MiB，自动读取已停止。',THREAD_READ_UNVERIFIED:'无法安全核对对话日志大小或索引。',THREAD_LOG_MISSING:'目标对话的本机日志缺失。',RECEIPT_UNCONFIRMED:'原发送或创建回执未确认，保留占用。',PLAN_PAUSED:'安排已暂停，需核对节点或原执行。',DEPENDENCY_WAIT:'前置任务尚未满足本轮结束或审阅条件。',CONTEXT_UNVERIFIED:'项目、目录或对话归属尚未可靠确认。',EXECUTION_WAIT:'执行或安排仍保留占用，等待安全放行。',MODEL_WAIT:'目标模型待核对或重新分配。',MODEL_REALLOCATION:'当前默认模型变化，需重新分配。',CATALOG_UNVERIFIED:'桌面活动状态未完成可靠核验。',SCOPE_UNKNOWN:'并行修改范围未知，保留等待。',SCOPE_OVERLAP:'模块、对话或修改范围存在冲突。',MAINTENANCE_WAIT:'安全更新或服务维护门禁尚未解除。',SYNC_WAIT:'同步仍在运行或保留未决回执。',STORAGE_FAULT:'存储异常，业务写入已受保护。',TASK_CHANGED:'任务内容或状态已变化，原安排需核对。',BLOCK_CHANGED:'此条等待或异常状态已变化；不代表任务已验收。',OPERATION_FAILED:'操作失败；请结合错误指纹、阶段和源码定位排查。',ENOENT:'所需本机文件不存在。',EACCES:'本机文件访问被拒绝。',EPERM:'本机文件操作权限不足。',ENOSPC:'本机存储空间不足。',COMMIT_UNKNOWN:'业务提交结果未知，不能自动重试。'};
+const reasons={THREAD_READ_TOO_LARGE:'对话日志超过64 MiB，自动读取已停止。',THREAD_READ_UNVERIFIED:'无法安全核对对话日志大小或索引。',THREAD_LOG_MISSING:'目标对话的本机日志缺失。',RECEIPT_UNCONFIRMED:'原发送或创建回执未确认，保留占用。',PLAN_PAUSED:'安排已暂停，需核对节点或原执行。',DEPENDENCY_WAIT:'前置任务尚未满足本轮结束或审阅条件。',CONTEXT_UNVERIFIED:'项目、目录或对话归属尚未可靠确认。',EXECUTION_WAIT:'执行或安排仍保留占用，等待安全放行。',MODEL_WAIT:'目标模型待核对或重新分配。',MODEL_REALLOCATION:'当前默认模型变化，需重新分配。',CATALOG_UNVERIFIED:'桌面活动状态未完成可靠核验。',SCOPE_UNKNOWN:'并行修改范围未知，保留等待。',SCOPE_OVERLAP:'模块、对话或修改范围存在冲突。',MAINTENANCE_WAIT:'安全更新或服务维护门禁尚未解除。',SYNC_WAIT:'同步仍在运行或保留未决回执。',STORAGE_FAULT:'存储异常，业务写入已受保护。',TASK_CHANGED:'任务内容或状态已变化，原安排需核对。',BLOCK_CHANGED:'此条等待或异常状态已变化；不代表任务已验收。',OPERATION_FAILED:'操作失败；请结合错误指纹、阶段和源码定位排查。',ENOENT:'所需本机文件不存在。',EACCES:'本机文件访问被拒绝。',EPERM:'本机文件操作权限不足。',ENOSPC:'本机存储空间不足。',COMMIT_UNKNOWN:'业务提交结果未知，不能自动重试。'};
 export function diagnosticCode(error){
   if(Object.hasOwn(reasons,error?.code??''))return error.code;
   const text=String(error?.message??error??'');
@@ -111,7 +111,7 @@ export class DiagnosticLog{
     for(const projectId of this.gates.keys())if(!active.has(projectId)){this.record({phase:'allocation-gate',level:'info',projectId,code:'BLOCK_CHANGED'});this.gates.delete(projectId);}
   }
   view(projectId,{limit=100,blockers=[]}={}){
-    const rows=[...this.rows.values()].filter(r=>!projectId||r.projectId===projectId).reverse().slice(0,limit).map(row=>({...row,hint:hints[row.code]??'结合诊断编号、关联记录和阶段定位；不要据此自动重试未知发送。'}));
+    const rows=[...this.rows.values()].filter(r=>!r.phase.startsWith('desktop-check-')&&(!projectId||r.projectId===projectId)).reverse().slice(0,limit).map(row=>({...row,hint:hints[row.code]??'结合诊断编号、关联记录和阶段定位；不要据此自动重试未知发送。'}));
     return {version:1,items:rows,blockers:blockers.slice(0,100),blockersTruncated:!!blockers.truncated||blockers.length>100,storageError:this.storageError,retention:{files:3,maxBytesPerFile:this.maxBytes},note:'仅含本机错误与状态摘要；不含任务正文、凭据或对话内容，不参与同步。当前记录不替代发送前的实时核验。'};
   }
 }

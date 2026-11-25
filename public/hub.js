@@ -93,8 +93,6 @@ export function initSidebarOpener(api,getCurrent,{standalone=false}={}){
 function select(id,projects,value){const el=$(id),old=el.value;if(el.closest('form')?.dataset.dirty==='true')return;el.innerHTML='<option value="">请选择…</option>'+projects.map(p=>`<option value="${esc(p.projectId)}">${esc(p.label)}</option>`).join('');el.value=value??old;}
 function set(id,value){if($(id).closest('form')?.dataset.dirty!=='true')$(id).value=value??'';}
 async function run(button,action){if(button?.disabled)return;if(button)button.disabled=true;try{await action();await api.load();}catch(e){api.notice(e.message,true);}finally{if(button)button.disabled=false;}}
-export function observeDesktopContext(context){diagnosticUI?.observeDesktopContext(context);}
-
 export function initHub(context){
   api=context;initVersions(context);initSidebarOpener(api,()=>current);initWorkflowInitialization(context);
   const host=document.createElement('section');host.id='workspaceHub';
