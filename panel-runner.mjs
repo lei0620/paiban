@@ -19,7 +19,11 @@ function launch(upgradeId=null){
   if(upgradeId)env.CODEXKZ_PENDING_UPDATE=upgradeId;
   if(installRoot)env.CODEXKZ_INSTALL_ROOT=installRoot;
   if(dataRoot)env.CODEXKZ_INSTALLED_DATA_ROOT=dataRoot;
-  const runtime=path.dirname(currentProgram);if(installRoot)env.PATH=path.join(runtime,'runtime','powershell')+path.delimiter+env.PATH;
+  if(installRoot){
+    const runtime=path.dirname(currentProgram);
+    const pathKey=process.platform==='win32'?(Object.keys(env).find(key=>key.toLowerCase()==='path')??'Path'):'PATH';
+    env[pathKey]=[path.join(runtime,'runtime','powershell'),env[pathKey]].filter(Boolean).join(path.delimiter);
+  }
   child=fork(path.join(currentProgram,'server.mjs'),[],{cwd:currentProgram,execPath:currentNode,env,windowsHide:true,stdio:['ignore','inherit','inherit','ipc']});
   child.on('message',message=>{
     if(message?.type==='panel-restart-ready')requested=true;

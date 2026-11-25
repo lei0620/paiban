@@ -36,7 +36,11 @@ export async function inspectRepository(project,{fresh=false}={}){
     const root=await git(['rev-parse','--show-toplevel']);
     if(normalize(root)!==normalize(directory))value={repository:null,repositoryReason:'源码目录不是仓库根目录，请手动确认逻辑项目'};
     else{const remotes=await git(['remote']);if(!remotes.trim())value={repository:null,repositoryStatus:'local',gitAvailable:true,repositoryReason:''};else{const repository=githubRepository(await git(['config','--get','remote.origin.url']));value={repository,repositoryStatus:repository?'github':'external',gitAvailable:true,repositoryReason:repository?'':'已有非 GitHub 远程仓库，请核对，不能直接覆盖'};}}
-  }catch(error){value=error.code===128&&/not a git repository/i.test(error.stderr??'')?{repository:null,repositoryStatus:'local',gitAvailable:false,repositoryReason:''}:{repository:null,repositoryStatus:'unavailable',repositoryReason:'源码仓库暂不可读取，请核对本机目录与远程配置'};}
+  }catch(error){
+    if(error.code===128&&/not a git repository/i.test(error.stderr??''))value={repository:null,repositoryStatus:'local',gitAvailable:false,repositoryReason:''};
+    else if(error.code==='ENOENT')value={repository:null,repositoryStatus:'unavailable',gitAvailable:false,repositoryReason:'暂未找到 Git 或项目目录，请核对后刷新项目'};
+    else value={repository:null,repositoryStatus:'unavailable',repositoryReason:'源码仓库暂不可读取，请核对本机目录与远程配置'};
+  }
   cache.set(key,{at:Date.now(),value});return value;
 }
 export function validateProjectIdentities(values=[]){

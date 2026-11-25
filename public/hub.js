@@ -26,11 +26,10 @@ const setupSteps=[
 ];
 
 function setupGuideMarkup(){
-  return `<details id="setupGuide" class="workspace-advanced"><summary>首次设置</summary>${setupSteps.map(step=>`<details class="workspace-option" data-setup-step="${step.key}"><summary>${step.title}</summary><p class="hint">${step.help}</p><div class="setup-guide-actions"><button type="button" data-setup-target="${step.target}" aria-label="打开配置：${step.title}">打开配置</button><button type="button" data-setup-copy aria-label="复制 Codex 指令：${step.title}">复制 Codex 指令</button></div><textarea hidden readonly rows="5" aria-label="${step.title}的 Codex 指令"></textarea><p class="hint" role="status"></p></details>`).join('')}</details>`;
+  return `<details id="setupGuide" class="workspace-advanced"><summary>设置帮助与 Codex 指令</summary>${setupSteps.map(step=>`<details class="workspace-option" data-setup-step="${step.key}"><summary>${step.title}</summary><p class="hint">${step.help}</p><div class="setup-guide-actions"><button type="button" data-setup-target="${step.target}" aria-label="打开配置：${step.title}">打开配置</button><button type="button" data-setup-copy aria-label="复制 Codex 指令：${step.title}">复制 Codex 指令</button></div><textarea hidden readonly rows="5" aria-label="${step.title}的 Codex 指令"></textarea><p class="hint" role="status"></p></details>`).join('')}</details>`;
 }
 
-function initSetupGuide(openSettings,showSettingsSection){
-  $('setupGuideEntry').onclick=()=>{openSettings(true);showSettingsSection('general');$('setupGuide').open=true;const summary=$('setupGuide').querySelector('summary');summary.focus();};
+function initSetupGuide(showSettingsSection){
   $('setupGuide').addEventListener('click',async event=>{
     const jump=event.target.closest('[data-setup-target]');
     if(jump){
@@ -100,9 +99,9 @@ export function initHub(context){
   api=context;initVersions(context);initSidebarOpener(api,()=>current);initWorkflowInitialization(context);
   const host=document.createElement('section');host.id='workspaceHub';
   host.innerHTML=`<nav class="hub-nav" aria-label="工作区导航"><div class="hub-switch"><a id="controlLink">总控</a><a id="ownBoardLink">项目</a><a id="referencesLink">资料</a></div><div class="workspace-tools"><button id="workspaceToggle" class="device-status-button" aria-controls="workspaceConfig" aria-expanded="false" aria-label="工作区设置"><svg class="device-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="device-divider" aria-hidden="true"></span><span id="workspaceLabel">未设置电脑</span><span id="updateAvailable" hidden> · 有更新</span><span class="device-divider" aria-hidden="true"></span></button></div></nav>
-    <button type="button" id="setupGuideEntry" hidden>开始设置</button><p id="identityReminder" class="identity-reminder" role="status"></p>
+    <div id="identityReminder" class="identity-reminder"></div>
     <details id="workspaceConfig" class="settings"><summary>工作区设置</summary><div class="workspace-panel-heading"><h1 id="workspaceHeading" tabindex="-1">设置</h1><nav id="workspaceSettingsNav" aria-label="设置分区"><button type="button" data-settings-target="general">常规</button><button type="button" data-settings-target="project">项目</button><button type="button" data-settings-target="sync">同步</button><button type="button" data-settings-target="storage">数据</button><button type="button" data-settings-target="updates">更新</button></nav><button type="button" id="closeWorkspace">返回</button></div><p id="workspaceSettingsNotice" role="status" aria-live="polite" hidden></p><p id="workspaceContext" hidden></p><div class="settings-body hub-settings">
-    <form id="deviceForm"><h3>这台电脑</h3><p id="deviceSummary" class="hint"></p><details id="deviceSettings" class="workspace-option"><summary>更改电脑与总控</summary>${input('deviceLabel','电脑名称','deviceLabel')}<label for="controllerProject">总控项目</label><select id="controllerProject" name="controllerProjectId" required></select><button class="primary">保存</button></details></form>
+    <form id="deviceForm"><h3 id="deviceHeading">这台电脑</h3><p id="deviceSummary" class="hint"></p><details id="deviceSettings" class="workspace-option"><summary>更改电脑与总控</summary>${input('deviceLabel','电脑名称','deviceLabel')}<label for="controllerProject">总控项目</label><select id="controllerProject" name="controllerProjectId" required></select><p id="quickSetupHint" class="hint" hidden>总控用于集中查看项目。需要跨电脑时，可在「同步」配置私有仓库。</p><button id="saveDeviceSettings" class="primary">保存</button></details></form>
     <form id="syncForm"><h3>待办同步</h3><p id="syncOverview" class="hint" role="status"></p><div class="workspace-sync-actions"><label class="check"><input id="syncAutoEnabled" name="autoEnabled" type="checkbox" checked>自动同步</label><button type="button" id="syncNow">立即同步</button></div><details id="syncConfigDetails" class="workspace-option"><summary id="syncConfigSummary">同步设置</summary><p id="syncStatus" class="hint" role="status"></p><div id="syncConflicts"></div><p id="syncInbox" class="hint"></p>${input('syncRepo','GitHub 私有仓库','repo')}${input('syncBranch','同步分支','branch')}<label class="check"><input id="syncRichFields" name="includeRichFields" type="checkbox" checked>包含版块、依赖、标签与附件</label><p class="hint">自动同步适用于待办。立即同步还会同步当前项目的看板和资料。</p><label class="check"><input name="confirmed" type="checkbox" required>确认使用此私有仓库保存待办及所选附件</label><button>保存同步设置</button></details></form>
     <details id="workspaceAdvanced" class="workspace-advanced"><summary>高级设置</summary>
     <form id="sourceForm"><h3>已有源码目录</h3><p id="sourceEntry" class="hint"></p><label for="sourcePath">实际源码目录</label><input id="sourcePath" name="sourcePath" required placeholder="选择已有GitHub仓库的本机绝对目录"><p class="hint">会话、任务和原有待办身份保留；只关联已有仓库，不上传或移动文件。同一源码目录会保留执行占用保护。</p><button id="previewSource" type="button">核验源码目录</button><p id="sourceProof" class="hint" role="status"></p><label class="check"><input id="confirmSource" type="checkbox" required>已核对会话入口、源码目录和仓库</label><button id="saveSource" class="primary" disabled>保存源码关联</button></form>
@@ -137,15 +136,18 @@ export function initHub(context){
   const topNav=host.querySelector('.hub-nav'),tools=topNav.querySelector('.workspace-tools');document.querySelector('.app-bar .brand').after(topNav);document.querySelector('.app-bar').append(tools);$('workspaceToggle').append($('connection'));tools.append(document.querySelector('.project-sync-shortcut'));const refresh=$('refresh');refresh.type='button';refresh.className='connection-refresh';refresh.setAttribute('aria-label','刷新连接');refresh.title='重新读取项目、对话和连接状态';refresh.append(document.createTextNode('刷新连接'));$('findInstances').before(refresh);document.querySelector('.connection-wrap').remove();
   // Move the existing controls, preserving their handlers and drafts.
   const settingsBody=$('workspaceConfig').querySelector('.hub-settings');
-  settingsBody.prepend($('settings'));settingsBody.insertAdjacentHTML('afterbegin',setupGuideMarkup());$('settings').open=true;
+  settingsBody.prepend($('settings'));$('deviceForm').insertAdjacentHTML('afterend',setupGuideMarkup());$('settings').open=true;
   const settingsSections={general:['setupGuide','deviceForm','workspaceAdvanced'],project:['settings'],sync:['syncForm'],storage:['storageSettings'],updates:['productSupport','productUpdate']};
   for(const [key,ids] of Object.entries(settingsSections))for(const id of ids)$(id).dataset.settingsSection=key;
   const settingsTabs=$('workspaceSettingsNav').querySelectorAll('[data-settings-target]');
   let settingsSection='general';
   function showSettingsSection(key){
     settingsSection=key;
+    $('workspaceConfig').dataset.settingsActive=key;
     for(const tab of settingsTabs)tab.setAttribute('aria-pressed',String(tab.dataset.settingsTarget===key));
     for(const [name,ids] of Object.entries(settingsSections))for(const id of ids)$(id).hidden=name!==key;
+    if(key==='project'&&!current.state?.projects?.some(row=>row.projectId===current.projectId))$('settings').hidden=true;
+    if(key==='general'&&!$('quickSetupHint').hidden)$('deviceSettings').open=true;
     if(key==='storage'){
       $('backupOptions').open=true;
       loadDataLocation();
@@ -171,6 +173,18 @@ export function initHub(context){
     if(open){$('workspaceSettingsNotice').hidden=true;showSettingsSection(settingsSection);window.scrollTo(0,0);$('workspaceHeading').focus({preventScroll:true});}
     else{for(const id of ['workspaceAdvanced','backupOptions','syncConfigDetails','deviceSettings','projectOptions','projectIdentitySettings','legacyBindingSettings','projectMountOptions','captureSetup'])$(id).open=false;$('captureSettingsButton').setAttribute('aria-expanded','false');window.scrollTo(workspaceScroll.x,workspaceScroll.y);$('workspaceToggle').focus({preventScroll:true});}
   };
+  $('identityReminder').addEventListener('click',e=>{
+    const entry=e.target.closest('[data-quick-setup]');
+    if(!entry)return;
+    setWorkspaceOpen(true);showSettingsSection('general');
+    if(entry.dataset.quickSetup==='connect'){
+      $('workspaceAdvanced').open=true;
+      $('findInstances').focus();
+    }else{
+      $('deviceSettings').open=true;
+      $('deviceLabel').focus();
+    }
+  });
   $('identityReminder').addEventListener('click',e=>{if(!e.target.closest('[data-configure-project]'))return;setWorkspaceOpen(true);showSettingsSection('project');$('projectOptions').open=true;$('projectIdentitySettings').open=true;$('mappingForm').scrollIntoView({block:'start'});$('logicalId').focus({preventScroll:true});});
   $('identityReminder').addEventListener('click',e=>{if(!e.target.closest('[data-configure-source]'))return;setWorkspaceOpen(true);showSettingsSection('project');$('projectOptions').open=true;$('projectIdentitySettings').open=true;$('sourceForm').scrollIntoView({block:'start'});$('sourcePath').focus({preventScroll:true});});
   $('identityReminder').addEventListener('click',e=>{
@@ -186,12 +200,12 @@ export function initHub(context){
   $('sourceForm').onsubmit=e=>{e.preventDefault();if(!sourceProof)return;const proof=sourceProof;run(e.submitter,async()=>{await api.post('workspace/source',{...proof,sourcePath:$('sourcePath').value,confirmed:$('confirmSource').checked});sourceProof=null;$('sourceForm').dataset.dirty='false';$('saveSource').disabled=true;$('confirmSource').checked=false;await api.load();api.notice('源码关联已保存，会话和任务保留。');});};
   $('workspaceToggle').onclick=()=>setWorkspaceOpen(!$('workspaceConfig').open);
   $('closeWorkspace').onclick=()=>setWorkspaceOpen(false);
-  initSetupGuide(setWorkspaceOpen,showSettingsSection);
+  initSetupGuide(showSettingsSection);
   $('workspaceConfig').addEventListener('toggle',workspaceVisibility);
   $('workspaceConfig').addEventListener('invalid',e=>{for(let section=e.target.closest('details');section&&section!==$('workspaceConfig');section=section.parentElement.closest('details'))section.open=true;},true);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('workspaceConfig').open&&!document.querySelector('dialog[open]')){e.preventDefault();setWorkspaceOpen(false);}});
   const submit=(id,route,make,done)=>{$(id).onsubmit=e=>{e.preventDefault();const form=e.currentTarget,data=make(values(form));run(e.submitter,async()=>{const r=await api.post(route,data);form.dataset.dirty='false';await done?.(r,form);api.notice('设置已保存。');});};};
-  submit('deviceForm','workspace/setup',v=>v);
+  submit('deviceForm','workspace/setup',v=>v,()=>{if(!$('quickSetupHint').hidden)setWorkspaceOpen(false);});
   submit('mappingForm','workspace/map',v=>({...v,projectId:current.projectId,tags:v.tags.split(/[,，]/).map(s=>s.trim()).filter(Boolean),confirmed:v.confirmed==='on'}));
   submit('syncForm','sync/setup',v=>({...v,confirmed:v.confirmed==='on',includeRichFields:v.includeRichFields==='on',autoEnabled:v.autoEnabled==='on'}));
   $('syncAutoEnabled').onchange=async()=>{if(!current.state?.sync?.config)return;try{await api.post('sync/auto',{enabled:$('syncAutoEnabled').checked});await api.load();}catch(e){api.notice(e.message,true);}};
@@ -297,7 +311,13 @@ export function renderHub(state,projectId,{projectHref}={}){
   reconnectDataLocation?.(state.service);
   renderRestart(state);
   const w=state.workspace??{mappings:{}},project=state.projects.find(p=>p.projectId===projectId),mapping=w.mappings?.[projectId];
-  $('setupGuideEntry').hidden=!!(state.caller&&w.deviceLabel&&w.controllerProjectId);
+  const needsSetup=!w.deviceLabel||!w.controllerProjectId;
+  const localProjects=state.projects.filter(row=>row.hostId==='local'&&row.path);
+  const setupController=w.controllerProjectId||(localProjects.some(row=>row.projectId===projectId)?projectId:localProjects.length===1?localProjects[0].projectId:'');
+  const connectionReady=!!state.caller&&!state.connectionError&&!!state.lastSync;
+  $('deviceHeading').textContent=needsSetup?'快速设置':'这台电脑';
+  $('quickSetupHint').hidden=!needsSetup;
+  $('saveDeviceSettings').textContent=needsSetup?'保存并开始使用':'保存';
   $('setupGuide').querySelector('[data-setup-target="logicalName"]').disabled=!project;
   $('setupGuide').querySelector('[data-setup-step="backup"]').hidden=!state.service?.backupConfigSupported;
   const controller=state.projects.find(p=>p.projectId===w.controllerProjectId),reason=w.projects?.find(p=>p.projectId===projectId)?.reason;
@@ -309,8 +329,8 @@ export function renderHub(state,projectId,{projectHref}={}){
   const addressParams=new URLSearchParams(location.search),currentView=addressParams.get('view');
   $('ownBoardLink').href=addressParams.get('projectId')===projectId&&!['control','versions','references'].includes(currentView)?location.href:ownAddress.href;
   const controllerLabel=controller?.label||w.mappings?.[w.controllerProjectId]?.logicalName||(w.controllerProjectId?'已保存，待连接':'未选择');
-  $('deviceSummary').textContent=(w.deviceLabel||'未设置电脑')+' · 总控：'+controllerLabel;
-  $('settings').hidden=!project;$('projectSettingsName').textContent=project?.label||'当前项目';
+  $('deviceSummary').textContent=needsSetup?(connectionReady?'Codex 已连接，核对下面的设置即可开始。':'连接 Codex 后，选择本机总控项目。'):(w.deviceLabel+' · 总控：'+controllerLabel);
+  $('settings').hidden=!project||$('workspaceConfig').dataset.settingsActive!=='project';$('projectSettingsName').textContent=project?.label||'当前项目';
   $('projectSettingsSummary').textContent=(reason?'项目配置待核对':mapping?.automatic?'项目已自动识别':mapping?'项目已关联':'项目待识别')+' · 对话按版块分配';
   $('githubUpgradeSettings').hidden=!!project?.repository||!!mapping?.sourcePath;
   const identity=`电脑：${w.deviceLabel||'未设置'} · 逻辑项目：${mapping?.logicalName||'未绑定'} · 总控：${controllerLabel}`;
@@ -319,7 +339,9 @@ export function renderHub(state,projectId,{projectHref}={}){
   const initialSetup=!awaitingCatalog&&!!project?.path&&!!w.deviceLabel&&!!controller&&!Object.prototype.hasOwnProperty.call(w.mappings??{},projectId)&&(!project.repository||!reason||reason==='请先核对并绑定当前项目的逻辑名称和本机目录');
   const localReady=!awaitingCatalog&&project?.repositoryStatus==='local'&&!!mapping&&!reason;
   const sourcePrompt='<span class="identity-setup"><span class="identity-setup-heading"><span>当前会话入口未关联源码。已上传的项目可关联已有源码目录。</span><button type="button" data-dismiss-source-reminder aria-label="关闭源码关联提示" title="关闭源码关联提示">×</button></span><button type="button" class="primary" data-configure-source>关联已有源码</button><button type="button" class="primary" data-upgrade-project>上传 GitHub</button><button type="button" data-initialize-workflow>补齐规范</button></span>';
-  const identityContent=localReady?(sourceReminderDismissed(projectId)?'':sourcePrompt):initialSetup?`<span class="identity-setup"><span title="${esc(project.repositoryReason||'')}">${!project.repository?'正在核对本地项目身份；读取失败时请检查目录与远程配置。':'正在自动关联源码仓库身份'}</span><button type="button" data-configure-project>检查配置</button><button type="button" data-initialize-workflow>补齐规范</button></span>`:warning?`<span class="identity-warning">⚠ ${esc(warning)}<br>${esc(identity)}<button type="button" data-configure-project>检查配置</button></span>`:'';
+  const quickIntro=!state.caller?'连接现有的 Codex 聊天即可开始。':state.connectionError?'先恢复 Codex 连接，再保存本机设置。':connectionReady?'Codex 已连接。核对电脑名称和总控项目即可。':'可先核对电脑名称，项目列表会随连接载入。';
+  const quickSetup=needsSetup||!state.caller;
+  const identityContent=quickSetup?`<section class="quick-setup-card" aria-labelledby="quickSetupTitle"><h2 id="quickSetupTitle">开始使用派板</h2><p>${quickIntro}</p><button type="button" class="primary" data-quick-setup="${!state.caller||state.connectionError?'connect':'device'}">${!state.caller||state.connectionError?'连接 Codex':'快速设置'}</button></section>`:localReady?(sourceReminderDismissed(projectId)?'':sourcePrompt):initialSetup?`<span class="identity-setup"><span>${project.repositoryReason?esc(project.repositoryReason):'正在自动识别项目'}</span><button type="button" data-configure-project>检查项目设置</button></span>`:warning?`<span class="identity-warning" role="status">${esc(warning)}<button type="button" data-configure-project>检查项目设置</button></span>`:'';
   $('identityReminder').hidden=!identityContent;
   if($('identityReminder').innerHTML!==identityContent)$('identityReminder').innerHTML=identityContent;
   renderWorkflowInitialization(state,projectId);
@@ -334,7 +356,7 @@ export function renderHub(state,projectId,{projectHref}={}){
   $('previewSource').disabled=!state.service?.sourceBindingSupported;
   if(!state.service?.sourceBindingSupported)$('sourceProof').textContent='面板更新完成后可关联源码目录。';
   $('mappingForm').hidden=!project;$('mappingPath').textContent=project?project.label+' · '+project.path:'';
-  set('deviceLabel',w.deviceLabel);select('controllerProject',state.projects,w.controllerProjectId);
+  set('deviceLabel',w.deviceLabel||'本机');select('controllerProject',localProjects,setupController);
   set('logicalId',mapping?.logicalId);set('logicalName',mapping?.logicalName);set('projectTags',mapping?.tags?.join('，'));
   set('syncRepo',state.sync?.config?.repo);set('syncBranch',state.sync?.config?.branch??'panel-tasks');set('connectionCaller',state.caller);
   const versions=currentView==='versions',references=currentView==='references'&&state.service?.projectReferencesSupported===true;

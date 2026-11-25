@@ -920,8 +920,11 @@ body.workspace-settings-open main > footer { display:none !important; }
 #workspaceConfig .workspace-option { margin-top:12px;padding-top:12px;border-top:1px solid #eceeef; }
 #workspaceConfig .workspace-option > summary { font-size:12px;color:#64696f;cursor:pointer; }
 #workspaceConfig .workspace-advanced > summary { font-size:13px;font-weight:600;cursor:pointer; }
-#setupGuideEntry { margin-bottom:8px; }
-.workspace-settings-open #setupGuideEntry { display:none; }
+.quick-setup-card { padding:14px 16px;border:1px solid var(--panel-border);border-radius:16px;background:var(--surface);color:var(--ink); }
+.quick-setup-card h2 { margin:0;font-size:15px;line-height:1.4; }
+.quick-setup-card p { margin:5px 0 10px;color:var(--muted); }
+.quick-setup-card button { min-height:34px; }
+#quickSetupHint { margin:9px 0 0; }
 #setupGuide .setup-guide-actions { display:flex;flex-wrap:wrap;gap:8px; }
 #setupGuide textarea { box-sizing:border-box;width:100%;margin-top:8px; }
 #setupGuide [role="status"]:empty { display:none; }
@@ -961,6 +964,8 @@ body.workspace-settings-open main > footer { display:none !important; }
   .product-support figcaption { color:CanvasText; }
   #workspaceConfig .workspace-option,#workspaceConfig .workspace-advanced > form { border-color:CanvasText; }
   #workspaceConfig .workspace-option > summary { color:CanvasText; }
+  .quick-setup-card { background:Canvas;color:CanvasText;border-color:CanvasText; }
+  .quick-setup-card p { color:CanvasText; }
 }
 
 
