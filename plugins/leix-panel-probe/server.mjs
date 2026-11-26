@@ -2,8 +2,15 @@ import {readFileSync} from 'node:fs';
 import {LocalPanelAdapter} from './adapter.mjs';
 import {EntryTickets} from './entry-tickets.mjs';
 
-const installedPort=process.env.PAIBAN_PLUGIN_PORT;
-const adapter=new LocalPanelAdapter(installedPort?{origin:'http://127.0.0.1:'+installedPort,expectedLaunchId:process.env.PAIBAN_LAUNCH_ID}:undefined),tickets=new EntryTickets(),mimeType='text/html;profile=mcp-app',version='0.5.1';
+const installedPort=process.env.PAIBAN_PLUGIN_PORT,launchId=process.env.PAIBAN_LAUNCH_ID;
+const adapter=new LocalPanelAdapter(installedPort?{origin:'http://127.0.0.1:'+installedPort,expectedLaunchId:launchId}:undefined),tickets=new EntryTickets(),mimeType='text/html;profile=mcp-app',version='0.5.1';
+let startup;
+function startPanel(){
+  if(installedPort&&launchId)startup??=import('./installed-start.mjs')
+    .then(({startInstalledPanel})=>startInstalledPanel(installedPort,launchId))
+    .catch(error=>console.error('派板随 Codex 启动失败：'+error.message));
+  return startup;
+}
 const resourceCache=new Map();
 const configuredMode=process.argv.find(arg=>arg.startsWith('--mode='))?.slice(7);
 if(!['global','thread'].includes(configuredMode))throw Error('A fixed local entry mode is required');
@@ -22,7 +29,10 @@ export async function respond(request){
   const {id,method,params={}}=request;if(!['string','number'].includes(typeof id)&&id!==null)return {jsonrpc:'2.0',id:null,error:{code:-32600,message:'Invalid Request'}};
   try{
     let result;
-    if(method==='initialize')result={protocolVersion:['2024-11-05','2025-03-26','2025-06-18','2025-11-25'].includes(params?.protocolVersion)?params.protocolVersion:'2025-06-18',capabilities:{tools:{},resources:{}},serverInfo:{name:'leix-panel-'+configuredMode,version},instructions:'LEIX 本机调度台。业务操作仅供原生界面使用。'};
+    if(method==='initialize'){
+      void startPanel();
+      result={protocolVersion:['2024-11-05','2025-03-26','2025-06-18','2025-11-25'].includes(params?.protocolVersion)?params.protocolVersion:'2025-06-18',capabilities:{tools:{},resources:{}},serverInfo:{name:'leix-panel-'+configuredMode,version},instructions:'LEIX 本机调度台。业务操作仅供原生界面使用。'};
+    }
     else if(method==='ping')result={};
     else if(method==='tools/list')result={tools:structuredClone(entries)};
     else if(method==='resources/list')result={resources:modes.map(mode=>({uri:uri(mode),name:`LEIX ${mode}`,mimeType}))};
@@ -36,7 +46,18 @@ export async function respond(request){
       if(modes.some(mode=>tool.name===`leix_panel_${mode}`))result={content:[{type:'text',text:'已打开 LEIX 本机调度台；业务尚未自动执行。'}],structuredContent:tickets.issue(tool.name.slice('leix_panel_'.length),params._meta)};
       else if(tool.name==='leix_panel_refresh_entry')result={content:[],structuredContent:tickets.issue(configuredMode,params._meta)};
       else{
-        let value;try{value=tool.name==='leix_panel_open'?await adapter.open({mode:tickets.take(args.ticket,args.viewId,params._meta),viewId:args.viewId},params._meta):tool.name==='leix_panel_reopen'?await adapter.reopen(args,params._meta):await adapter.request({...args,method:tool.name==='leix_panel_read'?'GET':'POST'},params._meta);}catch(error){value={status:error.status??503,body:{error:error.notApplied?error.message:'本机面板未运行，请按现有入口启动后重试',notApplied:true,...(error.entryRejected?{entryRejected:true}:{}),...(!error.notApplied?{serviceUnavailable:true}:{})}};}
+        let value;
+        try {
+          if(tool.name==='leix_panel_open'){
+            const mode=tickets.take(args.ticket,args.viewId,params._meta);
+            await startPanel();
+            value=await adapter.open({mode,viewId:args.viewId},params._meta);
+          }else if(tool.name==='leix_panel_reopen'){
+            value=await adapter.reopen(args,params._meta);
+          }else{
+            value=await adapter.request({...args,method:tool.name==='leix_panel_read'?'GET':'POST'},params._meta);
+          }
+        }catch(error){value={status:error.status??503,body:{error:error.notApplied?error.message:'本机面板未运行，请按现有入口启动后重试',notApplied:true,...(error.entryRejected?{entryRejected:true}:{}),...(!error.notApplied?{serviceUnavailable:true}:{})}};}
         result={content:[],structuredContent:value};
       }
     }else throw Object.assign(Error('Method not found'),{code:-32601});

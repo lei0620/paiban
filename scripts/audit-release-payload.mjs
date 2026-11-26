@@ -24,7 +24,7 @@ export function auditReleaseFiles(root,files){
 }
 
 export function releaseCandidateFiles(root){
-  const plugin=['plugin.json','mcp.json','server.mjs','adapter.mjs','entry-tickets.mjs','native-policy.mjs','ui/thread.html'].map(name=>path.join('plugins','leix-panel-probe',name));
+  const plugin=['plugin.json','mcp.json','server.mjs','adapter.mjs','entry-tickets.mjs','installed-start.mjs','native-policy.mjs','ui/thread.html'].map(name=>path.join('plugins','leix-panel-probe',name));
   const publicFiles=fs.readdirSync(path.join(root,'public'),{withFileTypes:true}).map(entry=>{
     if(!entry.isFile()||entry.isSymbolicLink())throw Error('页面目录包含非常规文件，不能自动审计');
     return path.join('public',entry.name);
